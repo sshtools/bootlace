@@ -1,0 +1,96 @@
+package com.sshtools.bootlace.api;
+
+import java.nio.file.Path;
+import java.text.MessageFormat;
+import java.util.Optional;
+
+public class Exceptions {
+
+	@SuppressWarnings("serial")
+	public final static  class FailedToOpenPlugin extends RuntimeException {
+		public FailedToOpenPlugin(PluginRef plugin) {
+			
+		}
+		public FailedToOpenPlugin(PluginRef plugin, Throwable cause) {
+			super(MessageFormat.format("The plugin ''{0}'' failed to load.", plugin.plugin().getClass().getName()), cause);
+		}
+	}
+	
+	@SuppressWarnings("serial")
+	public final static  class FailedToClosePlugin extends RuntimeException {
+		public FailedToClosePlugin(PluginRef plugin) {
+			
+		}
+		public FailedToClosePlugin(PluginRef plugin, Throwable cause) {
+			super(MessageFormat.format("The plugin ''{0}'' failed to close cleanly.", plugin.plugin().getClass().getName()), cause);
+		}
+	}
+
+	@SuppressWarnings("serial")
+	public final static class MissingPluginClassException extends RuntimeException {
+		
+		public MissingPluginClassException(Class<? extends Plugin> clazz) {
+			super(MessageFormat.format(
+					"""
+					
+					
+					The plugin ''{0}'' has been discovered by ServiceLoader, but the module that contains it has not registered it.
+					The most likely fix is to add ''provides {1} with {2}'' to the module-info.java in the same artifact.
+					
+					It might also mean you are trying to access sibling plugins in a plugin's constructor (or in an initialised member variable).
+					This is not currently possible. Instead, you should access them in your plugings afterOpen() method, when the
+					plugin instances will exist. Alternatively, you could attach them to a different (higher) layer.
+					""", clazz.getName(), Plugin.class.getName(), clazz.getName()));
+		}
+	}
+	
+	@SuppressWarnings("serial")
+	public final static class NotALayer extends RuntimeException {
+		
+		public NotALayer(Path path) {
+			super(MessageFormat.format("The artifact ''{0}'' exists, but it does not contain a layers.ini resource, suggesting it is not a plugin.", path));
+		}
+	}
+	
+	@SuppressWarnings("serial")
+	public final static class InvalidUsernameOrPasswordException extends RuntimeException {
+		
+		private final String username;
+		
+		public InvalidUsernameOrPasswordException(String username) {
+			this(username, null);
+		}
+		
+		public InvalidUsernameOrPasswordException(String username, Throwable cause) {
+			super("Invalid credentials, username or password incorrect.", cause);
+			this.username = username;
+		}
+		
+		public String username() {
+			return username;
+		}
+	}
+	
+	@SuppressWarnings("serial")
+	public final static class InvalidCredentials extends RuntimeException {
+		
+		private final Optional<String> username;
+		
+		public InvalidCredentials() {
+			this(Optional.empty());
+		}
+		
+		public InvalidCredentials(Optional<String> username) {
+			this(username, null);
+		}
+		
+		public InvalidCredentials(Optional<String> username, Throwable cause) {
+			super("Invalid credentials.", cause);
+			this.username = username;
+		}
+		
+		public Optional<String> username() {
+			return username;
+		}
+	}
+}

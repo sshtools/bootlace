@@ -38,6 +38,12 @@
             <email>brett@logonbox.com</email>
         </developer>
     </developers>
+    <modules>
+        <module>api</module>
+        <module>maven-plugin</module>
+        <module>platform</module>
+        <module>repositories</module>
+    </modules>
     <organization>
         <name>JAdapative</name>
         <url>https://jadaptive.com</url>

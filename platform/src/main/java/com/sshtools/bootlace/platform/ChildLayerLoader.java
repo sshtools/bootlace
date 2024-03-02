@@ -106,7 +106,7 @@ public final class ChildLayerLoader extends ClassLoader {
 
 			for (var child : LayerContext.get(moduleLayer).childLayers()) {
 				var ctx = LayerContext.get(child);
-				var aloader = child.findLoader("com.logonbox.jenny.io");
+				var aloader = child.findLoader("com.sshtools.jenny.io");
 				defeatGetResource.set(true);
 				URL url = null;
 				try {

@@ -30,7 +30,7 @@
         
         <build.projectProperties>${basedir}/jadaptive.build.properties</build.projectProperties>
         <build.userProperties>${user.home}/.jadaptive.build.properties</build.userProperties>
-        <build.quietProperties>false</build.quietProperties>
+        <build.quietProperties>true</build.quietProperties>
     </properties>
     <developers>
         <developer>
@@ -51,7 +51,7 @@
     <inceptionYear>2023</inceptionYear>
     <url>https://github.com/sshtools/bootlace</url>
     <description>
-        A framework that allowe construction of an application via layers of JPMS
+        A framework that allows construction of an application via layers of JPMS
         modules. 
     </description>
     <licenses>

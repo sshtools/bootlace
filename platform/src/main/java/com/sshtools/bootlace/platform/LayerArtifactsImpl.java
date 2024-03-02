@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.sshtools.bootlace.api.AppRepository;
+import com.sshtools.bootlace.api.Artifact;
 import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.Exceptions.NotALayer;
 import com.sshtools.bootlace.api.GAV;
@@ -210,7 +211,14 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		var arts = descriptor.artifactsSection();
 		arts.ifPresent(art -> { 
 			art.values().forEach((k, v) -> {
-				if(v.length == 1) {
+				if(k.equals("*")) {
+					pluginLayerDef.artifacts().forEach(defArt -> {
+						Artifact.find(defArt).pom().dependencies().forEach(gav -> 
+							addArtifactsIfNotDone(ArtifactRef.of(gav))
+						);
+					});
+				}
+				else if(v.length == 1) {
 					addArtifactsIfNotDone(ArtifactRef.of(GAV.ofSpec(k), Paths.get(v[0])));
 				}
 				else if(v.length == 0) {

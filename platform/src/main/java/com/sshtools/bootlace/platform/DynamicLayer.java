@@ -2,6 +2,7 @@ package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
@@ -33,9 +34,10 @@ import com.sshtools.bootlace.api.Zip;
 import com.sshtools.jini.INI;
 
 /**
- * A Container layer that watches a particular directory to load further layers from. 
+ * A Container layer that watches a particular directory to load further layers
+ * from.
  * <p>
- * When a  
+ * When a
  */
 public final class DynamicLayer extends AbstractChildLayer {
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
@@ -46,6 +48,7 @@ public final class DynamicLayer extends AbstractChildLayer {
 
 	public final static class Builder extends AbstractChildLayerBuilder<Builder> {
 		private Optional<Path> directory = Optional.empty();
+		private Optional<Path> fallbackDirectory = Optional.of(Paths.get(".bootlace"));
 		private Optional<ScheduledExecutorService> queue = Optional.empty();
 		private boolean directoryMonitor = true;
 		private Duration changeDelay = Duration.ofSeconds(3);
@@ -121,7 +124,16 @@ public final class DynamicLayer extends AbstractChildLayer {
 		}
 
 		public Builder withDirectory(Path directory) {
-			return withDirectory(directory);
+			return withDirectory(Optional.of(directory));
+		}
+
+		public Builder withFallbackDirectory(Path fallbackDirectory) {
+			return withFallbackDirectory(Optional.of(fallbackDirectory));
+		}
+
+		public Builder withFallbackDirectory(Optional<Path> fallbackDirectory) {
+			this.fallbackDirectory = fallbackDirectory;
+			return this;
 		}
 
 		public DynamicLayer build() {
@@ -134,21 +146,19 @@ public final class DynamicLayer extends AbstractChildLayer {
 	private final Map<String, AbstractChildLayer> loadedLayers = new ConcurrentHashMap<>();
 	private final Set<String> allowParents;
 	private final Set<String> denyParents;
+	private final Optional<Path> fallbackDirectory;
 
 	private ScheduledFuture<?> changedTask;
 
 	private DynamicLayer(Builder builder) {
 		super(builder);
+		fallbackDirectory = builder.fallbackDirectory;
 		allowParents = Collections.unmodifiableSet(new HashSet<>(builder.allowParents));
 		denyParents = Collections.unmodifiableSet(new HashSet<>(builder.denyParents));
-		directory = builder.directory.orElseGet(() -> defaultPluginsRoot());
-
-		var queue = builder.queue.orElseGet(() -> DefaultQueue.DEFAULT);
 
 		try {
-			if (!Files.exists(directory)) {
-				Files.createDirectories(directory);
-			}
+			directory = resolveDirectory(builder);
+			var queue = builder.queue.orElseGet(() -> DefaultQueue.DEFAULT);
 
 			if (builder.directoryMonitor) {
 				var watchService = FileSystems.getDefault().newWatchService();
@@ -182,6 +192,36 @@ public final class DynamicLayer extends AbstractChildLayer {
 			throw new UncheckedIOException(e);
 		}
 
+	}
+
+	private Path resolveDirectory(Builder builder) throws IOException {
+		var directory = builder.directory.orElseGet(() -> defaultPluginsRoot());
+
+		try {
+			if (Files.exists(directory)) {
+				var flag = directory.resolve(".bootlace.flag");
+				try {
+					Files.createFile(flag);
+				} finally {
+					Files.deleteIfExists(flag);
+				}
+			} else {
+				Files.createDirectories(directory);
+			}
+		} catch (AccessDeniedException ade) {
+			if (fallbackDirectory.isPresent()) {
+				var fallback = fallbackDirectory.get();
+				if (!fallback.isAbsolute()) {
+					fallback = Paths.get(System.getProperty("user.home")).resolve(".bootlace").resolve(directory.getFileName());
+				}
+				LOG.info("No access to {0}, falling back to {1} for dynamic layers", directory, fallback);
+				Files.createDirectories(fallback);
+				return fallback;
+			} else
+				throw ade;
+		}
+		
+		return directory;
 	}
 
 	@Override
@@ -239,8 +279,7 @@ public final class DynamicLayer extends AbstractChildLayer {
 							throw new UncheckedIOException(ioe2);
 						}
 					}
-				}
-				catch(NoSuchFileException nsfe) {
+				} catch (NoSuchFileException nsfe) {
 					// No descriptor
 				}
 
@@ -284,7 +323,7 @@ public final class DynamicLayer extends AbstractChildLayer {
 			var dir = directory.resolve(id);
 			if (!Files.exists(dir)) {
 				removed.add(id);
-				var appLayer = (RootLayerImpl)appLayer()
+				var appLayer = (RootLayerImpl) appLayer()
 						.orElseThrow(() -> new IllegalStateException("Dynamic layer not attached to app layer."));
 				appLayer.beforeClose(layer);
 				appLayer.close(layer);
@@ -303,14 +342,13 @@ public final class DynamicLayer extends AbstractChildLayer {
 					for (var jar : dirStream) {
 						try {
 							maybeLoadLayer(dir, new Descriptor.Builder().fromArtifact(jar).build());
-						}
-						catch(NoSuchFileException nsfe) {
+						} catch (NoSuchFileException nsfe) {
 							// No descriptor
 						}
 					}
 				}
 			}
-		} 
+		}
 	}
 
 	private void maybeLoadLayer(Path dir, Descriptor descriptor) {
@@ -339,17 +377,14 @@ public final class DynamicLayer extends AbstractChildLayer {
 		}
 
 		if (!loadedLayers.containsKey(id)) {
-			
-			var layer = new PluginLayerImpl.Builder(id).
-					fromDescriptor(descriptor).
-					withParents(id()).
-					withJarArtifactsDirectory(dir).
-					build();
+
+			var layer = new PluginLayerImpl.Builder(id).fromDescriptor(descriptor).withParents(id())
+					.withJarArtifactsDirectory(dir).build();
 
 			loadedLayers.put(id, layer);
 
-			var appLayer = (RootLayerImpl)appLayer().orElseThrow(
-					() -> new IllegalStateException("Dynamic layer not attached to app layer."));
+			var appLayer = (RootLayerImpl) appLayer()
+					.orElseThrow(() -> new IllegalStateException("Dynamic layer not attached to app layer."));
 			appLayer.open(layer);
 			appLayer.afterOpen(layer);
 		}

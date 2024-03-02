@@ -227,6 +227,14 @@ public final class GAV {
 		return new GAV(repository, groupId, artifactId, Optional.empty(), classifier);
 	}
 
+	public GAV toWithVersion(String version) {
+		return toWithVersion(Optional.of(version));
+	}
+
+	public GAV toWithVersion(Optional<String> version) {
+		return new GAV(repository, groupId, artifactId, version, classifier);
+	}
+
 	public GAV toWithoutRepository() {
 		return new GAV(Optional.empty(), groupId, artifactId, version, classifier);
 	}

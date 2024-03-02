@@ -36,6 +36,18 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 		return new RootLayerImpl(this);
 	}
 
+	public RootLayerBuilder fromStandardArguments(String... args) {
+		if(args.length == 0) 
+			fromINIResource();
+		else if(args.length == 1 && !args[0].startsWith("--")) {
+			fromINI(args[0]);
+		}
+		else 
+			throw new IllegalArgumentException("A single argument is supported, the path to a layers.ini file.");
+		
+		return this;
+	}
+
 	@Override
 	public RootLayerBuilder fromDescriptor(Descriptor descriptor) {
 		super.fromDescriptor(descriptor);

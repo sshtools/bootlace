@@ -6,7 +6,7 @@ import java.util.ResourceBundle;
 import java.util.function.Supplier;
 
 /**
- * Tiny logging framework that uses {@link System#getLogger(String)} underneat,
+ * Tiny logging framework that uses {@link System#getLogger(String)} underneath,
  * but with a more concise syntax.
  * <p>
  * All native bootlace components (and the Jenny framework) will uses this, as

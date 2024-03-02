@@ -21,6 +21,7 @@
     <artifactId>bootlace</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>Bootlace - Java Module Loading Framework</name>
+    <packaging>pom</packaging>
     <properties>
         <maven.compiler.target>21</maven.compiler.target>
         <maven.compiler.source>21</maven.compiler.source>
@@ -68,13 +69,15 @@
         <url>https://github.com/sshtools/bootlace</url>
         <connection>scm:git:https://github.com/sshtools/bootlace.git</connection>
     </scm>
-    <dependencies>
-        <dependency>
-            <groupId>com.sshtools</groupId>
-            <artifactId>jini</artifactId>
-            <version>0.2.2</version>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.sshtools</groupId>
+                <artifactId>jini</artifactId>
+                <version>0.2.5</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <build>
         <plugins>
             <plugin>

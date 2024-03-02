@@ -8,8 +8,7 @@ Inspired by Lawrry, Bootlace was written from the ground up to meet our particul
  * Layers defined either programmatically or via INI format files.
  * Can locate artifacts in local paths (e.g. development environments), local repositories ($HOME/.m2), or any folder
  * Layers can be configured as dynamic pointing to a directory. Zip files dropped in the directory will be loaded as new layers. Also expanded layers in the directory may be deleted and they will be removed.  
- * Can download artifacts from either Maven Central or NPM.
- * Transforms NPM packages into Jars which are exposed as resources loadable as any other Java resource.
+ * Can download artifacts from Maven repositories.
  
 ## Components
 

@@ -267,7 +267,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 			//
 			var pluginLayerDef = (PluginLayerImpl) layerDef;
-			var layerArtifacts = new LayerArtifactsImpl(pluginLayerDef, httpClientFactory);
+			var layerArtifacts = new LayerArtifactsImpl(pluginLayerDef, httpClientFactory, root);
 			pluginLayerDef.layerArtifacts = Optional.of(layerArtifacts);
 			var paths = layerArtifacts.paths(); 
 

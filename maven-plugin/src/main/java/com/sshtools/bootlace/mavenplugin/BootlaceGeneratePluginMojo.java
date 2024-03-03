@@ -83,7 +83,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 	@Component
 	private MavenProjectHelper projectHelper;
 
-	@SuppressWarnings("unchecked")
 	protected void onExecute() throws MojoExecutionException, MojoFailureException {
 		var log = getLog();
 		if (skipPoms && "pom".equals(project.getPackaging())) {
@@ -135,17 +134,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 			storeTarget.getParentFile().mkdirs();
 
 			Properties sourceProperties = new Properties();
-//			try (InputStream pin = new FileInputStream(sourceDef)) {
-//				sourceProperties.load(pin);
-//			}
-//			if (!sourceProperties.containsKey("extension.description")) {
-//				sourceProperties.setProperty("extension.description",
-//						project.getDescription() == null ? (project.getName() == null ? "" : project.getName())
-//								: project.getDescription());
-//			}
-//			if (!sourceProperties.containsKey("extension.name")) {
-//				sourceProperties.setProperty("extension.name", project.getName() == null ? "" : project.getName());
-//			}
 
 			var artifacts = new ArrayList<Artifact>();
 
@@ -155,8 +143,8 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 			generateZip(sourceProperties, storeTarget, artifacts);
 
 			if (attach) {
-				log.info("Attaching artifact as extension-archive zip");
-				projectHelper.attachArtifact(project, "zip", "extension-archive", storeTarget);
+				log.info("Attaching artifact as bootlace zip");
+				projectHelper.attachArtifact(project, "zip", "bootlace", storeTarget);
 			}
 
 		} catch (Exception e) {
@@ -167,24 +155,8 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 	protected void generateZip(Properties sourceProperties, File zipfile, List<Artifact> artifacts)
 			throws IOException, FileNotFoundException {
-		var sourceI18n = new File(project.getBasedir(),
-				"target" + File.separator + "classes" + File.separator + "i18n");
-
-//		FileUtils.copyDirectory(sourceI18n, destI18n, project.getArtifactId() + "*", null);
-//
-//		var destDef = new File(extensionDef, project.getArtifactId() + ".def");
-//		try (var pin = new FileOutputStream(destDef)) {
-//			sourceProperties.store(pin, "Processed by bootlace-maven-plugin");
-//		}
 
 		try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(zipfile))) {
-
-//			e = new ZipEntry(project.getArtifactId() + "/extension.def");
-//			zip.putNextEntry(e);
-//			try (FileInputStream fin = new FileInputStream(destDef)) {
-//				IOUtil.copy(fin, zip);
-//			}
-//			zip.closeEntry();
 
 			var art = project.getArtifact();
 			Log log = getLog();

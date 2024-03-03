@@ -28,6 +28,7 @@ import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
 import com.sshtools.bootlace.api.PluginLayer;
 import com.sshtools.bootlace.api.ResolutionMonitor;
+import com.sshtools.bootlace.platform.RootLayerImpl.RootContextImpl;
 
 public class LayerArtifactsImpl implements LayerArtifacts {
 
@@ -37,12 +38,14 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	private Set<ArtifactRef> artifactsDone = new LinkedHashSet<>();
 	private Set<ArtifactRef> finalArtifactsDone = new LinkedHashSet<>();
 
-	private PluginLayerImpl pluginLayerDef;
-	private HttpClientFactory httpClientFactory;
+	private final PluginLayerImpl pluginLayerDef;
+	private final HttpClientFactory httpClientFactory;
+	private final RootContextImpl rootContext;
 	
-	LayerArtifactsImpl(PluginLayerImpl pluginLayerDef, HttpClientFactory httpClientFactory) {
+	LayerArtifactsImpl(PluginLayerImpl pluginLayerDef, HttpClientFactory httpClientFactory, RootContextImpl rootContext) {
 		this.pluginLayerDef = pluginLayerDef;
 		this.httpClientFactory = httpClientFactory;
+		this.rootContext = rootContext;
 		
 		artifactsToDo.addAll(pluginLayerDef.artifacts());
 		
@@ -96,10 +99,10 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 			/* Is this a reference for a versioned artifact, where we already have a
 			 * one with a path? Is so, skip
 			 */
-			if(first.gav().hasVersion()) {
+			if(resolveGav(first).hasVersion()) {
 				var skip = false;
 				for(var have : finalArtifactsDone) {
-					if(have.hasPath() && have.gav().toWithoutVersion().equals(first.gav().toWithoutVersion())) {
+					if(have.hasPath() && resolveGav(have).toWithoutVersion().equals(resolveGav(first).toWithoutVersion())) {
 						skip = true;
 						break;
 					}
@@ -143,13 +146,13 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	
 	private void optimizeArtifacts() {
 		finalArtifactsDone = finalArtifactsDone.stream().filter(art -> {
-			return art.path().isPresent() || !isArtifactWithPathPresent(art.gav());
+			return art.path().isPresent() || !isArtifactWithPathPresent(resolveGav(art));
 		}).collect(Collectors.toSet());
 	}
 	
 	private boolean isArtifactWithPathPresent(GAV gav) {
 		for(var art : finalArtifactsDone) {
-			if(art.gav().equals(gav) && art.path().isPresent())
+			if(resolveGav(art).equals(gav) && art.path().isPresent())
 				return true;
 		}
 		return false;
@@ -233,12 +236,13 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	}
 
 	private Path loadArtifact(ArtifactRef ref) throws IOException {
-		var gav = ref.gav();
 		var monitor = pluginLayerDef.resolveMonitor();
 		
 		if(ref.path().isPresent()) {
 			
 			var path = ref.path().get();
+			var gav = resolveGav(ref);
+		
 			LOG.info("Loading {0} @ {1}", gav, path);
 			if(!Files.exists(path)) {
 				throw new IOException(MessageFormat.format("Path to artifact ''{0}'' of ''{1}'' does not exist. Local artifact paths are only intended for developer purposes, and would usually point to the class output directory from your compiler, e.g. target/classes or bin. These must exist.", gav, path));
@@ -247,8 +251,9 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 			return path;
 		}
 		else {
+			var gav = resolveGav(ref);
 			LOG.info("Loading {0}", gav);
-
+			
 			var found = false;
 			var appRepositories = pluginLayerDef.resolveAppRepositories();
 			var locals = pluginLayerDef.resolveLocalRepositories();
@@ -341,6 +346,19 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 						""", gav, appRepositories.size()));
 			}
 		}
+	}
+
+	private GAV resolveGav(ArtifactRef ref) {
+		var gav = ref.gav();
+		if(!gav.hasVersion()) {
+			/* No version specific in layers.ini, see if we can get it from the 
+			 * pom for this artifact
+			 */
+			for(var art : pluginLayerDef.artifacts()) {
+//				System.out.println(art);
+			}
+		}
+		return gav;
 	}
 
 	private Path downloadArtifact(GAV gav, AppRepository appRepository,

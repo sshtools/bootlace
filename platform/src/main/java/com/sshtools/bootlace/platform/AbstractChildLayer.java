@@ -3,7 +3,6 @@ package com.sshtools.bootlace.platform;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -13,7 +12,7 @@ import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.AppRepository.AppRepositoryBuilder;
 import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.GAV;
-import com.sshtools.bootlace.api.LayerContext;
+import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.LocalRepository.LocalRepositoryBuilder;
 import com.sshtools.bootlace.api.Logs;
@@ -96,6 +95,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 				+ "]";
 	}
 
+	@SuppressWarnings("unchecked")
 	<REPO extends Repository, BLDR extends Repository.RepositoryBuilder<BLDR, REPO>> Set<REPO> resolveRepositoriesForLayer(
 			Function<AbstractChildLayer, Set<String>> supplier, Class<REPO> repoClass, Class<BLDR> bldrClass) {
 
@@ -104,16 +104,21 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 		}
 		
 		var l = new LinkedHashSet<REPO>();
+		var thisModuleLayer = getClass().getModule().getLayer();
+		
 		if (parents.isEmpty()) {
 			for (var repoId : supplier.apply(this)) {
-				Repositories.forIdOr(getClass().getModule().getLayer(), repoId, repoClass, bldrClass)
+				Repositories.forIdOr(thisModuleLayer, repoId, repoClass, bldrClass)
 						.ifPresent(repo -> l.add(repo));
 			}
+		
+			addRemotesForLayer(supplier, repoClass, l, thisModuleLayer, this);
 				
 		} else {
 			appLayer.ifPresent(app -> {
+					var rootLayer = (RootLayerImpl) app;
 				for (var parent : parents) {
-					var moduleLayer = ((RootLayerImpl) app).moduleLayers.get(parent);
+					var moduleLayer = rootLayer.moduleLayers.get(parent);
 					if (moduleLayer == null)
 						throw new IllegalStateException(
 								MessageFormat.format("Parent layer ''{0}'' does not exist.", parent));
@@ -126,8 +131,13 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 					for (var repoId : supplier.apply(this)) {
 						Repositories.forIdOr(moduleLayer, repoId, repoClass, bldrClass).ifPresent(repo -> l.add(repo));
 					}
+					
+					var layer = rootLayer.layers.get(parent);
+					if(layer != null) 
+						addRemotesForLayer(supplier, repoClass, l, moduleLayer, ((AbstractChildLayer)layer));
 				}
 
+				addRemotesForLayer(supplier, repoClass, l, rootLayer.getClass().getModule().getLayer(), rootLayer);
 			});
 		}
 		
@@ -137,6 +147,26 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			}
 		}
 		return l;
+	}
+
+	protected <REPO extends Repository> void addRemotesForLayer(Function<AbstractChildLayer, Set<String>> supplier,
+			Class<REPO> repoClass, LinkedHashSet<REPO> l, ModuleLayer thisLayer, AbstractLayer layer) {
+		if(repoClass.equals(RemoteRepository.class)) {
+			for (var repoId : supplier.apply(this)) {
+				var def = layer.remoteRepositoryDefs.get(repoId);
+				if(def != null) {
+					Repositories.builderForId(thisLayer, "central", RemoteRepositoryBuilder.class).ifPresent(bldr -> {
+						bldr.withId(def.id());
+						bldr.withName(def.name());
+						bldr.withRoot(def.root());
+						bldr.withReleases(def.releases().orElse(def.snapshots().isEmpty()));
+						bldr.withSnapshots(def.releases().orElse(def.releases().isEmpty()));
+						
+						l.add((REPO) bldr.build());
+					});
+				}
+			}
+		}
 	}
 
 	<REPO extends Repository, BLDR extends Repository.RepositoryBuilder<BLDR, REPO>> Set<REPO> resolveRepositories(

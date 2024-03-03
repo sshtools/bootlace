@@ -79,19 +79,21 @@ public final class Descriptor {
 	private final String id;
 	private final List<Section> children;
 	private final Optional<Section> artifacts;
+	private final Optional<Section> remotes;
 
 	private Descriptor(Builder bldr) {
 		component = bldr.ini.section("component");
 		artifacts = bldr.ini.sectionOr("artifacts");
 		id = component.get("id");
 		children = Arrays.asList(bldr.ini.sectionOr("layer").map(l -> l.allSections()).orElse(new Section[0]));
+		remotes = bldr.ini.sectionOr("remotes");
 	}
 
-	public List<Section> layerSections() {
+	public List<Section> layers() {
 		return children;
 	}
 
-	public Section componentSection() {
+	public Section component() {
 		return component;
 	}
 
@@ -99,7 +101,11 @@ public final class Descriptor {
 		return id;
 	}
 
-	public Optional<Section> artifactsSection() {
+	public Optional<Section> remotes() {
+		return remotes;
+	}
+
+	public Optional<Section> artifacts() {
 		return artifacts;
 	}
 }

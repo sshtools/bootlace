@@ -51,12 +51,12 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 	@Override
 	public RootLayerBuilder fromDescriptor(Descriptor descriptor) {
 		super.fromDescriptor(descriptor);
-		var l = descriptor.componentSection();
-		descriptor.artifactsSection().ifPresent(a -> {
+		var l = descriptor.component();
+		descriptor.artifacts().ifPresent(a -> {
 			throw new IllegalArgumentException("The root layer may have no artifacts.");
 		});
 		withUserAgent(l.getOr("userAgent"));
-		descriptor.layerSections().forEach(g -> {
+		descriptor.layers().forEach(g -> {
 			var type = g.getOr("type").orElse("static");
 			if (type.equals("dynamic")) {
 				withLayers(new DynamicLayer.Builder(g.key()).

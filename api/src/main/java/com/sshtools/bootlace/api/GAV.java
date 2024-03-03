@@ -206,6 +206,10 @@ public final class GAV {
 				&& Objects.equals(groupId, other.groupId) && Objects.equals(repository, other.repository)
 				&& Objects.equals(version, other.version);
 	}
+	
+	public boolean isSnapshot() {
+		return version.isPresent() && (version.get().endsWith("-SNAPSHOT") || version.get().contains("-SNAPSHOT-") );
+	}
 
 	public boolean hasVersion() {
 		return version.isPresent();
@@ -237,6 +241,10 @@ public final class GAV {
 
 	public GAV toWithoutRepository() {
 		return new GAV(Optional.empty(), groupId, artifactId, version, classifier);
+	}
+
+	public boolean isResolved() {
+		return !isSnapshot() || (isSnapshot() && !version().endsWith("-SNAPSHOT"));
 	}
 
 }

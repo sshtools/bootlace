@@ -3,15 +3,20 @@ package com.sshtools.bootlace.platform;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.Logs;
@@ -19,6 +24,7 @@ import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.jini.INI;
+import com.sshtools.jini.INI.Section;
 
 class AbstractLayer implements Layer {
 
@@ -28,6 +34,7 @@ class AbstractLayer implements Layer {
 
 		Set<String> appRepositories = new LinkedHashSet<>(); 
 		Set<String> remoteRepositories = new LinkedHashSet<>();
+		Set<RemoteRepositoryDef> remoteRepositoryDefs = new LinkedHashSet<>();
 		Optional<ResolutionMonitor> monitor = Optional.empty();
 		Set<String> localRepositories = new LinkedHashSet<>();
 
@@ -71,8 +78,29 @@ class AbstractLayer implements Layer {
 			return addRemoteRepositories(Arrays.asList(repositories));
 		}
 
+		@SuppressWarnings("unchecked")
+		public final L addRemoteRepositoryDefs(Collection<RemoteRepositoryDef> remoteRepositoryDefs) {
+			this.remoteRepositoryDefs.addAll(remoteRepositoryDefs);
+			return (L) this;
+		}
+
+		public final L addRemoteRepositoryDefs(RemoteRepositoryDef... remoteRepositoryDefs) {
+			return addRemoteRepositoryDefs(Arrays.asList(remoteRepositoryDefs));
+		}
+
+		@SuppressWarnings("unchecked")
 		public L fromDescriptor(Descriptor descriptor) {
-			return (L) fromComponentSection(descriptor.componentSection());
+			return (L) fromComponentSection(descriptor.component()).fromRemotesSection(descriptor.remotes());
+		}
+
+		@SuppressWarnings("unchecked")
+		public <L extends AbstractLayerBuilder<L>> L fromRemotesSection(Optional<Section> remotes) {
+			remotes.ifPresent(r -> {
+				for(var sec : r.allSections()) {
+					addRemoteRepositoryDefs(toRemoteRepositoryDef(sec));
+				}
+			});
+			return (L)this;
 		}
 
 		public final L fromINI(Path path) {
@@ -138,6 +166,14 @@ class AbstractLayer implements Layer {
 		public final L withLocalRepositories(String... repositories) {
 			return withLocalRepositories(Arrays.asList(repositories));
 		}
+
+		public final L withRemoteRepositoryDefs(Collection<RemoteRepositoryDef> remoteRepositoryDefs) {
+			return addRemoteRepositoryDefs(remoteRepositoryDefs);
+		}
+
+		public final L withRemoteRepositoryDefs(RemoteRepositoryDef... repositories) {
+			return withRemoteRepositoryDefs(Arrays.asList(repositories));
+		}
 		
 		@SuppressWarnings("unchecked")
 		public final L withMonitor(ResolutionMonitor monitor) {
@@ -190,6 +226,14 @@ class AbstractLayer implements Layer {
 			return (L) this;
 		}
 
+		protected RemoteRepositoryDef toRemoteRepositoryDef(Section sec) {
+			return new RemoteRepositoryDef(
+					sec.key(), 
+					sec.getOr("name").orElseGet(() -> sec.get("id")), 
+					sec.getOr("root").map(URI::create).orElseThrow(()-> new IllegalArgumentException("No 'root' in repository def section.")),
+					sec.getBooleanOr("releases"), sec.getBooleanOr("snapshots"));
+		}
+
 		protected final L fromINI(INI ini) {
 			return fromDescriptor(new Descriptor.Builder().fromINI(ini).build());
 		}
@@ -205,6 +249,7 @@ class AbstractLayer implements Layer {
 	protected final Set<String> appRepositories;
 	protected final Set<String> remoteRepositories;
 	protected final Set<String> localRepositories;
+	protected final Map<String, RemoteRepositoryDef> remoteRepositoryDefs;
 	
 	private final Optional<ResolutionMonitor> monitor;
 	private final String id;
@@ -218,6 +263,7 @@ class AbstractLayer implements Layer {
 		this.appRepositories = new LinkedHashSet<>(builder.appRepositories); 
 		this.remoteRepositories = new LinkedHashSet<>(builder.remoteRepositories);
 		this.localRepositories = new LinkedHashSet<>(builder.localRepositories);
+		this.remoteRepositoryDefs = new HashMap<>(builder.remoteRepositoryDefs.stream().collect(Collectors.toMap(RemoteRepositoryDef::id, Function.identity())));
 		this.monitor = builder.monitor;
 		this.global = builder.global;
 	}

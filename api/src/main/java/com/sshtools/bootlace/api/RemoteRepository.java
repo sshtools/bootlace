@@ -11,7 +11,15 @@ public interface RemoteRepository extends Repository {
 	public interface RemoteRepositoryBuilder extends Repository.RepositoryBuilder<RemoteRepositoryBuilder, RemoteRepository> {
 		RemoteRepository build();
 
+		RemoteRepositoryBuilder withId(String id);
+
+		RemoteRepositoryBuilder withName(String name);
+
 		RemoteRepositoryBuilder withRoot(URI root);
+
+		RemoteRepositoryBuilder withReleases(boolean releases);
+
+		RemoteRepositoryBuilder withSnapshots(boolean snapshots);
 	}
 
 	InputStream download(HttpClientFactory httpClient, GAV gav, URI uri, ResolutionResult result,

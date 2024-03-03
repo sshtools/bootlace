@@ -36,8 +36,9 @@ public class Http {
 	}
 
 	public static HttpClient.Builder createDefaultHttpClientBuilder() {
-		return HttpClient.newBuilder()
-				.version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10));
+		return HttpClient.newBuilder().
+				version(HttpClient.Version.HTTP_1_1).
+				connectTimeout(Duration.ofSeconds(10));
 	}
 
 	public static String urlEncode(String val) {

@@ -94,4 +94,15 @@ public class XML {
 	private NodeList byTagName(String tagName) {
 		return element().getElementsByTagName(tagName);
 	}
+
+	public void dumpEl() {
+		var el = element();
+		System.out.println("---- " + el);
+		var chs = el.getChildNodes();
+		for(int i = 0 ; i < chs.getLength(); i++) {
+			var item = chs.item(i);
+			System.out.println(item);
+		}
+		System.out.println("----");
+	}
 }

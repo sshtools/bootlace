@@ -243,7 +243,7 @@ public final class DynamicLayer extends AbstractChildLayer {
 			for (var zip : stream) {
 				try {
 					var descriptor = new Descriptor.Builder().fromArtifact(zip).build();
-					var layer = descriptor.componentSection();
+					var layer = descriptor.component();
 					var id = layer.get("id");
 					var dir = zip.getParent().resolve(id);
 
@@ -352,7 +352,7 @@ public final class DynamicLayer extends AbstractChildLayer {
 	}
 
 	private void maybeLoadLayer(Path dir, Descriptor descriptor) {
-		var layerSection = descriptor.componentSection();
+		var layerSection = descriptor.component();
 		var id = layerSection.get("id");
 
 		var wantedParents = new HashSet<>(Arrays.asList(layerSection.getAllOr("parents").orElse(new String[0])));

@@ -172,7 +172,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		 * should be re-used
 		 */
 				
-		var section = descriptor.componentSection();
+		var section = descriptor.component();
 		
 		/* Override some other basic stuff if possible */
 		if(section.contains("global"))
@@ -215,7 +215,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 			LOG.debug("Parents for ''{0}'' now ''{1}''", descriptor.id(), String.join(", ", pluginLayerDef.parents));
 		}
 		
-		var arts = descriptor.artifactsSection();
+		var arts = descriptor.artifacts();
 		arts.ifPresent(art -> { 
 			art.values().forEach((k, v) -> {
 				if(k.equals("*")) {

@@ -10,8 +10,6 @@ public interface Repository {
 
 	public interface RepositoryBuilder<BLDR extends RepositoryBuilder<?, REPO>, REPO> {
 		
-		String id();
-
 		BLDR withName(String name);
 
 		BLDR withRoot(String root);

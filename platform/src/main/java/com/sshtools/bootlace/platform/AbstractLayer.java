@@ -18,10 +18,14 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.Layer;
+import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
+import com.sshtools.bootlace.api.RemoteRepository;
+import com.sshtools.bootlace.api.Repository;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.jini.INI;
 import com.sshtools.jini.INI.Section;
@@ -34,7 +38,7 @@ class AbstractLayer implements Layer {
 
 		Set<String> appRepositories = new LinkedHashSet<>(); 
 		Set<String> remoteRepositories = new LinkedHashSet<>();
-		Set<RemoteRepositoryDef> remoteRepositoryDefs = new LinkedHashSet<>();
+		Set<RepositoryDef> repositoryDefs = new LinkedHashSet<>();
 		Optional<ResolutionMonitor> monitor = Optional.empty();
 		Set<String> localRepositories = new LinkedHashSet<>();
 
@@ -79,28 +83,21 @@ class AbstractLayer implements Layer {
 		}
 
 		@SuppressWarnings("unchecked")
-		public final L addRemoteRepositoryDefs(Collection<RemoteRepositoryDef> remoteRepositoryDefs) {
-			this.remoteRepositoryDefs.addAll(remoteRepositoryDefs);
+		public final L addRepositoryDefs(Collection<RepositoryDef> repositoryDefs) {
+			this.repositoryDefs.addAll(repositoryDefs);
 			return (L) this;
 		}
 
-		public final L addRemoteRepositoryDefs(RemoteRepositoryDef... remoteRepositoryDefs) {
-			return addRemoteRepositoryDefs(Arrays.asList(remoteRepositoryDefs));
+		public final L addRepositoryDefs(RepositoryDef... repositoryDefs) {
+			return addRepositoryDefs(Arrays.asList(repositoryDefs));
 		}
 
 		@SuppressWarnings("unchecked")
 		public L fromDescriptor(Descriptor descriptor) {
-			return (L) fromComponentSection(descriptor.component()).fromRemotesSection(descriptor.remotes());
-		}
-
-		@SuppressWarnings("unchecked")
-		public <L extends AbstractLayerBuilder<L>> L fromRemotesSection(Optional<Section> remotes) {
-			remotes.ifPresent(r -> {
-				for(var sec : r.allSections()) {
-					addRemoteRepositoryDefs(toRemoteRepositoryDef(sec));
-				}
-			});
-			return (L)this;
+			return (L) fromComponentSection(descriptor.component()).
+					   fromRepositoryDefsSection(RemoteRepository.class, descriptor.remoteRepositories()).
+					   fromRepositoryDefsSection(AppRepository.class, descriptor.appRepositories()).
+					   fromRepositoryDefsSection(LocalRepository.class, descriptor.localRepositories());
 		}
 
 		public final L fromINI(Path path) {
@@ -167,12 +164,12 @@ class AbstractLayer implements Layer {
 			return withLocalRepositories(Arrays.asList(repositories));
 		}
 
-		public final L withRemoteRepositoryDefs(Collection<RemoteRepositoryDef> remoteRepositoryDefs) {
-			return addRemoteRepositoryDefs(remoteRepositoryDefs);
+		public final L withRepositoryDefs(Collection<RepositoryDef> remoteRepositoryDefs) {
+			return addRepositoryDefs(remoteRepositoryDefs);
 		}
 
-		public final L withRemoteRepositoryDefs(RemoteRepositoryDef... repositories) {
-			return withRemoteRepositoryDefs(Arrays.asList(repositories));
+		public final L withRepositoryDefs(RepositoryDef... repositories) {
+			return withRepositoryDefs(Arrays.asList(repositories));
 		}
 		
 		@SuppressWarnings("unchecked")
@@ -213,25 +210,39 @@ class AbstractLayer implements Layer {
 			return withRemoteRepositories(Arrays.asList(repositories));
 		}
 
+		@SuppressWarnings({ "unchecked", "hiding" })
+		protected <L extends AbstractLayerBuilder<L>> L fromRepositoryDefsSection(Class<? extends Repository> type, Optional<Section> repos) {
+			repos.ifPresent(r -> {
+				for(var sec : r.allSections()) {
+					addRepositoryDefs(toRemoteRepositoryDef(type, sec));
+				}
+			});
+			return (L)this;
+		}
+
 		@SuppressWarnings("unchecked")
 		protected L fromComponentSection(INI.Section section) {
-			addLocalRepositories(section.getAllOr("localRepository").orElse(new String[0]));
-			addLocalRepositories(section.getAllOr("localRepositories").orElse(new String[0]));
-			addAppRepositories(section.getAllOr("appRepository").orElse(new String[0]));
-			addAppRepositories(section.getAllOr("appRepositories").orElse(new String[0]));
-			addRemoteRepositories(section.getAllOr("remoteRepository").orElse(new String[0]));
-			addRemoteRepositories(section.getAllOr("remoteRepositories").orElse(new String[0]));
+			addLocalRepositories(section.getAllOr("local-repository").orElse(new String[0]));
+			addLocalRepositories(section.getAllOr("local-repositories").orElse(new String[0]));
+			addAppRepositories(section.getAllOr("app-repository").orElse(new String[0]));
+			addAppRepositories(section.getAllOr("app-repositories").orElse(new String[0]));
+			addRemoteRepositories(section.getAllOr("remote-repository").orElse(new String[0]));
+			addRemoteRepositories(section.getAllOr("remote-repositories").orElse(new String[0]));
 			withName(section.getOr("name"));
 			withGlobal(section.getBooleanOr("global",false));
 			return (L) this;
 		}
 
-		protected RemoteRepositoryDef toRemoteRepositoryDef(Section sec) {
-			return new RemoteRepositoryDef(
+		protected RepositoryDef toRemoteRepositoryDef(Class<? extends Repository> type, Section sec) {
+			return new RepositoryDef(
+					type,
 					sec.key(), 
 					sec.getOr("name").orElseGet(() -> sec.get("id")), 
 					sec.getOr("root").map(URI::create).orElseThrow(()-> new IllegalArgumentException("No 'root' in repository def section.")),
-					sec.getBooleanOr("releases"), sec.getBooleanOr("snapshots"));
+					sec.getBooleanOr("releases"), 
+					sec.getBooleanOr("snapshots"),
+					sec.getOr("pattern")
+			);
 		}
 
 		protected final L fromINI(INI ini) {
@@ -249,7 +260,7 @@ class AbstractLayer implements Layer {
 	protected final Set<String> appRepositories;
 	protected final Set<String> remoteRepositories;
 	protected final Set<String> localRepositories;
-	protected final Map<String, RemoteRepositoryDef> remoteRepositoryDefs;
+	protected final Map<String, RepositoryDef> repositoryDefs;
 	
 	private final Optional<ResolutionMonitor> monitor;
 	private final String id;
@@ -263,7 +274,7 @@ class AbstractLayer implements Layer {
 		this.appRepositories = new LinkedHashSet<>(builder.appRepositories); 
 		this.remoteRepositories = new LinkedHashSet<>(builder.remoteRepositories);
 		this.localRepositories = new LinkedHashSet<>(builder.localRepositories);
-		this.remoteRepositoryDefs = new HashMap<>(builder.remoteRepositoryDefs.stream().collect(Collectors.toMap(RemoteRepositoryDef::id, Function.identity())));
+		this.repositoryDefs = new HashMap<>(builder.repositoryDefs.stream().collect(Collectors.toMap(RepositoryDef::id, Function.identity())));
 		this.monitor = builder.monitor;
 		this.global = builder.global;
 	}

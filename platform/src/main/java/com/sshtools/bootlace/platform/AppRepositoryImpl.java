@@ -1,4 +1,4 @@
-package com.sshtools.bootlace.repositories;
+package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,15 +10,30 @@ import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.GAV;
 
 public class AppRepositoryImpl extends LocalRepositoryImpl implements AppRepository {
+	
+	private static class LazyAppRepository {
+		static AppRepository DEFAULT = (AppRepository)new AppRepositoryBuilder().build();
+	}
+
+	public static AppRepository appRepository() {
+		return LazyAppRepository.DEFAULT;
+	}
 
 	public final static class AppRepositoryBuilder implements AppRepository.AppRepositoryBuilder {
-		private Path root = Paths.get("repository");
+		private Path root = Paths.get(AppRepository.ID);
 
 		private String name = "App Repository";
+		private String pattern = System.getProperty("bootlace.app.pattern", "%G/%a/%v/%a-%v.jar");
 
 		@Override
 		public AppRepositoryBuilder withName(String name) {
 			this.name = name;
+			return this;
+		}
+		
+		@Override
+		public AppRepositoryBuilder withPattern(String pattern) {
+			this.pattern = pattern;
 			return this;
 		}
 
@@ -37,15 +52,10 @@ public class AppRepositoryImpl extends LocalRepositoryImpl implements AppReposit
 		public AppRepositoryImpl build() {
 			return new AppRepositoryImpl(this);
 		}
-
-		@Override
-		public String id() {
-			return "repository";
-		}
 	}
 
 	private AppRepositoryImpl(AppRepositoryBuilder builder) {
-		super(builder.root, builder.name, builder.id());
+		super(builder.root, builder.name, AppRepository.ID, builder.pattern);
 	}
 
 	@Override

@@ -42,7 +42,6 @@
         <module>api</module>
         <module>maven-plugin</module>
         <module>platform</module>
-        <module>repositories</module>
     </modules>
     <organization>
         <name>JAdapative</name>

@@ -1,10 +1,16 @@
+import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.AppRepository.AppRepositoryBuilder;
 import com.sshtools.bootlace.api.LayerContext;
+import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.LocalRepository.LocalRepositoryBuilder;
 import com.sshtools.bootlace.api.Plugin;
 import com.sshtools.bootlace.api.PluginContext;
+import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.RemoteRepository.RemoteRepositoryBuilder;
+import com.sshtools.bootlace.platform.AppRepositoryImpl;
 import com.sshtools.bootlace.platform.LayerContextImpl;
+import com.sshtools.bootlace.platform.LocalRepositoryImpl;
+import com.sshtools.bootlace.platform.RemoteRepositoryImpl;
 import com.sshtools.bootlace.platform.PluginContextProviderImpl;
 
 module com.sshtools.bootlace.platform {
@@ -20,4 +26,11 @@ module com.sshtools.bootlace.platform {
 	uses LayerContext.Provider;
 	provides LayerContext.Provider with LayerContextImpl.Provider;
 	provides PluginContext.Provider with PluginContextProviderImpl;
+	
+	provides LocalRepository.LocalRepositoryBuilder with 
+		LocalRepositoryImpl.LocalRepositoryBuilder;
+	provides AppRepository.AppRepositoryBuilder with
+		AppRepositoryImpl.AppRepositoryBuilder;
+	provides RemoteRepository.RemoteRepositoryBuilder with
+		RemoteRepositoryImpl.RemoteRepositoryBuilder;
 }

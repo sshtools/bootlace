@@ -27,6 +27,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import com.sshtools.bootlace.api.BootContext;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
@@ -399,8 +400,7 @@ public final class DynamicLayer extends AbstractChildLayer {
 		 * Is there a pom.xml in the current directory. If so, we are in a development
 		 * environment, so use a 'tmp' directory
 		 */
-		var pom = Paths.get("pom.xml");
-		if (Files.exists(pom)) {
+		if (BootContext.isDeveloper()) {
 			return Paths.get(System.getProperty("bootlace.dev.plugins", "plugins"));
 		}
 		/*

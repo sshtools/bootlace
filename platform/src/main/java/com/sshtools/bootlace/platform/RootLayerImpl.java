@@ -107,7 +107,10 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	RootLayerImpl(RootLayerBuilder builder) {
 		super(builder);
 
-		this.bootstrapRepository = builder.bootstrapRepository;
+		this.bootstrapRepository = builder.bootstrapRepository.or(() -> BootContext.isDeveloper() 
+				? Optional.of(BootstrapRepository.bootstrapRepository()) 
+				: Optional.empty());
+		
 		this.userAgent = builder.userAgent.orElse("Bootlace");
 		this.httpClientFactory = builder.httpClientFactory.orElseGet(Http::defaultClientFactory);
 

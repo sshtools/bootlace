@@ -180,8 +180,8 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 
 		/* Add more repositories and child artifacts */
 		var repos = Stream.concat(
-				Arrays.asList(section.getAllOr("localRepository").orElse(new String[0])).stream(),
-				Arrays.asList(section.getAllOr("localRepositories").orElse(new String[0])).stream()).toList();
+				Arrays.asList(section.getAllOr("local-repository").orElse(new String[0])).stream(),
+				Arrays.asList(section.getAllOr("local-repositories").orElse(new String[0])).stream()).toList();
 		pluginLayerDef.localRepositories.addAll(repos);
 		
 		if(LOG.debug()) {
@@ -189,8 +189,8 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		}
 		
 		repos = Stream.concat(
-				Arrays.asList(section.getAllOr("remoteRepository").orElse(new String[0])).stream(),
-				Arrays.asList(section.getAllOr("remoteRepositories").orElse(new String[0])).stream()).toList();
+				Arrays.asList(section.getAllOr("remote-repository").orElse(new String[0])).stream(),
+				Arrays.asList(section.getAllOr("remote-repositories").orElse(new String[0])).stream()).toList();
 		pluginLayerDef.remoteRepositories.addAll(repos);
 		
 		if(LOG.debug()) {
@@ -199,8 +199,8 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		
 		
 		repos = Stream.concat(
-				Arrays.asList(section.getAllOr("appRepository").orElse(new String[0])).stream(),
-				Arrays.asList(section.getAllOr("appRepositories").orElse(new String[0])).stream()).toList();
+				Arrays.asList(section.getAllOr("app-repository").orElse(new String[0])).stream(),
+				Arrays.asList(section.getAllOr("app-repositories").orElse(new String[0])).stream()).toList();
 		pluginLayerDef.appRepositories.addAll(repos);
 		
 		if(LOG.debug()) {
@@ -273,7 +273,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				/* Check locals */
 				if(locals.isEmpty()) {
 					throw new IOException(MessageFormat.format("""
-							Artifact ''{0}'' was not found, as there was neither an 'appRepository', 
+							Artifact ''{0}'' was not found, as there was neither an 'app-repository', 
 							nor a 'localRepository' configured to be able to retrieve it. 
 							Check your layers.ini for this layer. 
 							""", gav));
@@ -299,7 +299,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				
 				throw new IOException(MessageFormat.format("""
 						Artifact ''{0}'' was not found, and could not be found by searching {1}
-						static local repositories. An 'appRepository' was not configured
+						static local repositories. An 'app-repository' was not configured
 						either, so the artifact could not be downloaded from any remote
 						repositories if there are any. Check your layers.ini for this layer. 
 						""", gav, locals.size()));

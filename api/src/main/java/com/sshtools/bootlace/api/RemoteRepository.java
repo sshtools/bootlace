@@ -8,6 +8,7 @@ import java.util.Optional;
 import com.sshtools.bootlace.api.Http.HttpClientFactory;
 
 public interface RemoteRepository extends Repository {
+	
 	public interface RemoteRepositoryBuilder extends Repository.RepositoryBuilder<RemoteRepositoryBuilder, RemoteRepository> {
 		RemoteRepository build();
 

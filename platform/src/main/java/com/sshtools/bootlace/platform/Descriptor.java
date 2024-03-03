@@ -79,14 +79,18 @@ public final class Descriptor {
 	private final String id;
 	private final List<Section> children;
 	private final Optional<Section> artifacts;
-	private final Optional<Section> remotes;
+	private final Optional<Section> remoteRepositories;
+	private final Optional<Section> localRepositories;
+	private final Optional<Section> appRepositories;
 
 	private Descriptor(Builder bldr) {
 		component = bldr.ini.section("component");
 		artifacts = bldr.ini.sectionOr("artifacts");
 		id = component.get("id");
 		children = Arrays.asList(bldr.ini.sectionOr("layer").map(l -> l.allSections()).orElse(new Section[0]));
-		remotes = bldr.ini.sectionOr("remotes");
+		remoteRepositories = bldr.ini.sectionOr("remote-repository");
+		localRepositories = bldr.ini.sectionOr("local-repository");
+		appRepositories = bldr.ini.sectionOr("app-repository");
 	}
 
 	public List<Section> layers() {
@@ -100,9 +104,29 @@ public final class Descriptor {
 	public String id() {
 		return id;
 	}
-
-	public Optional<Section> remotes() {
-		return remotes;
+	
+	public Optional<Section> remoteRepositories() {
+		return remoteRepositories;
+	}
+	
+	public Optional<Section> remoteRepository(String id) {
+		return remoteRepositories.map(sec -> sec.section(id));
+	}
+	
+	public Optional<Section> localRepositories() {
+		return localRepositories;
+	}
+	
+	public Optional<Section> localRepository(String id) {
+		return localRepositories.map(sec -> sec.section(id));
+	}
+	
+	public Optional<Section> appRepositories() {
+		return appRepositories;
+	}
+	
+	public Optional<Section> appRepository(String id) {
+		return appRepositories.map(sec -> sec.section(id));
 	}
 
 	public Optional<Section> artifacts() {

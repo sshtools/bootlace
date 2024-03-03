@@ -1,4 +1,4 @@
-package com.sshtools.bootlace.repositories;
+package com.sshtools.bootlace.platform;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -11,17 +11,30 @@ import com.sshtools.bootlace.api.LocalRepository;
 
 public class LocalRepositoryImpl implements  LocalRepository {
 	
+	private static class LazyLocalRepository {
+		static LocalRepository DEFAULT = (LocalRepository)new LocalRepositoryBuilder().build();
+	}
+
+	public static LocalRepository localRepository() {
+		return LazyLocalRepository.DEFAULT;
+	}
+	
 	public final static class LocalRepositoryBuilder implements LocalRepository.LocalRepositoryBuilder {
 		
-		private Path root = Paths.get(System.getProperty("user.home")).
-				resolve(".m2").
-				resolve("repository");
+		private Path root = BootstrapRepository.m2Local();
 		
 		private String name = "Local Repository";
+		private String pattern = System.getProperty("bootlace.local.pattern", "%G/%a/%v/%a-%v.jar");
 		
 		@Override
 		public LocalRepository.LocalRepositoryBuilder withName(String name) {
 			this.name = name;
+			return this;
+		}
+		
+		@Override
+		public LocalRepository.LocalRepositoryBuilder withPattern(String pattern) {
+			this.pattern = pattern;
 			return this;
 		}
 		
@@ -40,28 +53,26 @@ public class LocalRepositoryImpl implements  LocalRepository {
 		public LocalRepository build() {
 			return new LocalRepositoryImpl(this);
 		}
-
-		@Override
-		public String id() {
-			return "m2";
-		}
 	}
 	
 	private final Path root;
 	private final String name;
 	private final String id;
+	private final String pattern;
 	
 	private LocalRepositoryImpl(LocalRepositoryBuilder builder) {
 		this.root = builder.root;
 		this.name = builder.name;
-		this.id = builder.id();
+		this.pattern = builder.pattern;
+		this.id = ID;
 	}
 
-	protected LocalRepositoryImpl(Path root, String name, String id) {
+	protected LocalRepositoryImpl(Path root, String name, String id, String pattern) {
 		super();
 		this.root = root;
 		this.name = name;
 		this.id = id;
+		this.pattern = pattern;
 	}
 
 	@Override
@@ -73,11 +84,7 @@ public class LocalRepositoryImpl implements  LocalRepository {
 	}
 
 	protected Path resolveGav(GAV gav) {
-		return root.
-				resolve(dottedToPath(gav.groupIdOr().orElse(""))).
-				resolve(gav.artifactId()).
-				resolve(gav.version()).
-				resolve(gav.artifactId() + "-" + gav.version() + ".jar");
+		return root.resolve(LocalRepository.gavPath(pattern, gav));
 	}
 	
 	static String dottedToPath(String dotted) {

@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -12,7 +13,7 @@ import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.AppRepository.AppRepositoryBuilder;
 import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.GAV;
-import com.sshtools.bootlace.api.Layer;
+import com.sshtools.bootlace.api.LayerContext;
 import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.LocalRepository.LocalRepositoryBuilder;
 import com.sshtools.bootlace.api.Logs;
@@ -95,142 +96,19 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 				+ "]";
 	}
 
-	@SuppressWarnings("unchecked")
-	<REPO extends Repository, BLDR extends Repository.RepositoryBuilder<BLDR, REPO>> Set<REPO> resolveRepositoriesForLayer(
-			Function<AbstractChildLayer, Set<String>> supplier, Class<REPO> repoClass, Class<BLDR> bldrClass) {
-
-		if (LOG.debug()) {
-			LOG.debug("Resolving repositories of type {0} for layer {1}", repoClass.getName(), id());
-		}
-		
-		var l = new LinkedHashSet<REPO>();
-		var thisModuleLayer = getClass().getModule().getLayer();
-		
-		if (parents.isEmpty()) {
-			for (var repoId : supplier.apply(this)) {
-				Repositories.forIdOr(thisModuleLayer, repoId, repoClass, bldrClass)
-						.ifPresent(repo -> l.add(repo));
-			}
-		
-			addRemotesForLayer(supplier, repoClass, l, thisModuleLayer, this);
-				
-		} else {
-			appLayer.ifPresent(app -> {
-					var rootLayer = (RootLayerImpl) app;
-				for (var parent : parents) {
-					var moduleLayer = rootLayer.moduleLayers.get(parent);
-					if (moduleLayer == null)
-						throw new IllegalStateException(
-								MessageFormat.format("Parent layer ''{0}'' does not exist.", parent));
-
-					if (LOG.debug()) {
-						LOG.debug("Now resolving repository for {0} using parent {1} module loader", id(),
-								parent);
-					}
-
-					for (var repoId : supplier.apply(this)) {
-						Repositories.forIdOr(moduleLayer, repoId, repoClass, bldrClass).ifPresent(repo -> l.add(repo));
-					}
-					
-					var layer = rootLayer.layers.get(parent);
-					if(layer != null) 
-						addRemotesForLayer(supplier, repoClass, l, moduleLayer, ((AbstractChildLayer)layer));
-				}
-
-				addRemotesForLayer(supplier, repoClass, l, rootLayer.getClass().getModule().getLayer(), rootLayer);
-			});
-		}
-		
-		if(l.isEmpty()) {
-			if(LOG.debug()) {
-				LOG.debug("Found no repositories of type {0} for layer {1} on the classpath", repoClass.getName(), id());
-			}
-		}
-		return l;
-	}
-
-	protected <REPO extends Repository> void addRemotesForLayer(Function<AbstractChildLayer, Set<String>> supplier,
-			Class<REPO> repoClass, LinkedHashSet<REPO> l, ModuleLayer thisLayer, AbstractLayer layer) {
-		if(repoClass.equals(RemoteRepository.class)) {
-			for (var repoId : supplier.apply(this)) {
-				var def = layer.remoteRepositoryDefs.get(repoId);
-				if(def != null) {
-					Repositories.builderForId(thisLayer, "central", RemoteRepositoryBuilder.class).ifPresent(bldr -> {
-						bldr.withId(def.id());
-						bldr.withName(def.name());
-						bldr.withRoot(def.root());
-						bldr.withReleases(def.releases().orElse(def.snapshots().isEmpty()));
-						bldr.withSnapshots(def.releases().orElse(def.releases().isEmpty()));
-						
-						l.add((REPO) bldr.build());
-					});
-				}
-			}
-		}
-	}
-
-	<REPO extends Repository, BLDR extends Repository.RepositoryBuilder<BLDR, REPO>> Set<REPO> resolveRepositories(
-			Set<REPO> l, Function<AbstractChildLayer, Set<String>> supplier, Class<REPO> repoClass,
-			Class<BLDR> bldrClass) {
-		l.addAll(resolveRepositoriesForLayer(supplier, repoClass, bldrClass));
-		appLayer.ifPresent(app -> {
-			for (var parent : parents) {
-				var moduleLayer = (AbstractChildLayer) ((RootLayerImpl) app).layers.get(parent);
-				if (moduleLayer == null)
-					throw new IllegalStateException(
-							MessageFormat.format("Parent layer ''{0}'' does not exist.", parent));
-				moduleLayer.resolveRepositories(l, supplier, repoClass, bldrClass);
-			}
-		});
-		return l;
-	}
-	
-	<BLDR extends RepositoryBuilder<BLDR, REPO>, REPO extends Repository> REPO forId(ModuleLayer layer, String id,
-			Class<? extends REPO> repoClass, Class<? extends BLDR> builderClass) {
-		return forIdOr(layer, id, repoClass, builderClass)
-				.orElseThrow(() -> new IllegalStateException("No repository implementation with id of " + id));
-	}
-
-	@SuppressWarnings("unchecked")
-	<BLDR extends RepositoryBuilder<BLDR, REPO>, REPO extends Repository> Optional<REPO> forIdOr(ModuleLayer layer, 
-			String id, Class<? extends REPO> repoClass, Class<? extends BLDR> builderClass) {
-		if(appLayer.isPresent() && id.equals("bootstrap") && repoClass.equals(LocalRepository.class)) {
-			return Optional.of((REPO)(((RootLayerImpl)appLayer.get()).bootstrapRepository().orElse(Repositories.bootstrapRepository())));
-		}
-		else {
-			return Repositories.forIdOr(layer, id, repoClass, builderClass);
-		}
-	}
-	
-
 	Set<LocalRepository> resolveLocalRepositories() {
-		var l = new LinkedHashSet<LocalRepository>();
-		resolveRepositories(l, (a) -> a.localRepositories(), LocalRepository.class, LocalRepositoryBuilder.class);
-		appLayer.ifPresent(app -> {
-			l.addAll(app.localRepositories().stream().map(r -> forId(getClass().getModule().getLayer(), r,
-					LocalRepository.class, LocalRepositoryBuilder.class)).toList());
-		});
-		return l;
+		return resolveRepositoriesForLayer( 
+				(a) -> a.localRepositories(), LocalRepository.class, LocalRepositoryBuilder.class);
 	}
 
 	Set<RemoteRepository> resolveRemoteRepositories() {
-		var l = new LinkedHashSet<RemoteRepository>();
-		resolveRepositories(l, (a) -> a.remoteRepositories(), RemoteRepository.class, RemoteRepositoryBuilder.class);
-		appLayer.ifPresent(app -> {
-			l.addAll(app.remoteRepositories().stream().map(r -> forId(getClass().getModule().getLayer(), r,
-					RemoteRepository.class, RemoteRepositoryBuilder.class)).toList());
-		});
-		return l;
+		return resolveRepositoriesForLayer( 
+				(a) -> a.remoteRepositories(), RemoteRepository.class, RemoteRepositoryBuilder.class);
 	}
 
 	Set<AppRepository> resolveAppRepositories() {
-		var l = new LinkedHashSet<AppRepository>();
-		resolveRepositories(l, (a) -> a.appRepositories(), AppRepository.class, AppRepositoryBuilder.class);
-		appLayer.ifPresent(app -> {
-			l.addAll(app.appRepositories().stream().map(r -> forId(getClass().getModule().getLayer(), r,
-					AppRepository.class, AppRepositoryBuilder.class)).toList());
-		});
-		return l;
+		return resolveRepositoriesForLayer( 
+				(a) -> a.appRepositories(), AppRepository.class, AppRepositoryBuilder.class);
 	}
 	
 	Optional<ResolutionMonitor> resolveMonitor() {
@@ -266,4 +144,136 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 		throw new IllegalStateException("GAV " + gav + " is not supported by any repository.");
 	}
 
+	private <REPO extends Repository, BLDR extends Repository.RepositoryBuilder<BLDR, REPO>> Set<REPO> resolveRepositoriesForLayer(
+			Function<AbstractChildLayer, Set<String>> supplier, Class<REPO> repoClass, Class<BLDR> bldrClass) {
+
+		if (LOG.debug()) {
+			LOG.debug("Resolving repositories of type {0} for layer {1}", repoClass.getName(), id());
+		}
+		
+		var l = new LinkedHashSet<REPO>();
+		
+		for (var repoId : supplier.apply(this)) {
+			builderForId(repoId, repoClass, bldrClass)
+					.ifPresent(repo -> l.add(repo));
+		}
+			
+		appLayer.ifPresent(app -> {
+			var rootLayer = (RootLayerImpl) app;
+			for (var parent : parents) {
+				var layer = rootLayer.layers.get(parent);
+				if (layer == null)
+					throw new IllegalStateException(
+							MessageFormat.format("Parent layer ''{0}'' does not exist.", parent));
+
+				if (LOG.debug()) {
+					LOG.debug("Now resolving repository for {0} using parent {1} module loader", id(),
+							parent);
+				}
+				l.addAll(((AbstractChildLayer)layer).resolveRepositoriesForLayer(supplier, repoClass, bldrClass));
+			}
+		});
+		
+		if(l.isEmpty()) {
+			if(LOG.debug()) {
+				LOG.debug("Found no repositories of type {0} for layer {1} on the classpath", repoClass.getName(), id());
+			}
+		}
+		return l;
+	}
+
+ 	@SuppressWarnings("unchecked")
+	private <BLDR extends RepositoryBuilder<BLDR, REPO>, REPO extends Repository> Optional<REPO> builderForId( 
+			String id, Class<? extends REPO> repoClass, Class<? extends BLDR> builderClass) {
+ 		
+ 		var def = findRepositoryDef(id);
+ 		if(def == null) {
+ 			if(id.equals(BootstrapRepository.ID)) {
+ 				return (Optional<REPO>) ((RootLayerImpl)appLayer.get()).bootstrapRepository();
+ 			}
+ 			else if(id.equals(LocalRepository.ID)) {
+ 				return (Optional<REPO>) Optional.of(LocalRepositoryImpl.localRepository());
+ 			}
+ 			else if(id.equals(AppRepository.ID)) {
+ 				return (Optional<REPO>) Optional.of(AppRepositoryImpl.appRepository());
+ 			}
+ 			else {
+ 				throw new IllegalArgumentException(MessageFormat.format("No repository def for ''{0}''.", id));
+ 			}
+ 		}
+ 		if(def.type().equals(repoClass)) {
+ 			throw new IllegalArgumentException(MessageFormat.format("Unexpected repository type for ''{0}''. Expected ''{1}'', got ''{2}''.", id, repoClass.getName(), def.type().getName()));
+ 		}
+ 		
+		var thisModuleLayer = getClass().getModule().getLayer();
+		var bldrOr = ServiceLoader.load(thisModuleLayer, builderClass).findFirst();
+		if(bldrOr.isEmpty()) {
+			LOG.debug("NO repository builder of type ''{0}'' of class ''{1}'' in child layers of ''{2}'', trying service layers", id, builderClass.getName(), thisModuleLayer);
+		}
+		else {
+			return Optional.of(configureBuilder(def, bldrOr.get()));
+		}
+		
+		var layerCtx = LayerContext.get(builderClass);
+		for(var lyr : layerCtx.globalLayers()) {
+			
+			LOG.debug("Trying layer ''{0}''", lyr); 
+			bldrOr = ServiceLoader.load(lyr, builderClass).findFirst();
+			if(bldrOr.isEmpty()) {
+				LOG.debug("Still NO repository builder of type ''{0}'' of class ''{1}'' in service layers, giving up", id, builderClass.getName());
+			}
+			else {
+				return Optional.of(configureBuilder(def, bldrOr.get()));
+			}
+		}
+		
+		return Optional.empty();
+	}
+
+	private <BLDR extends RepositoryBuilder<BLDR, REPO>, REPO extends Repository> REPO configureBuilder(RepositoryDef def, BLDR bldr) {
+		bldr.withName(def.name());
+		bldr.withRoot(def.root().toString());
+		
+		/* Sanity check */
+		if(bldr instanceof RemoteRepositoryBuilder rbldr) {
+			rbldr.withReleases(def.snapshots().orElseGet(() -> def.releases().isEmpty()));
+			rbldr.withSnapshots(def.releases().orElseGet(() -> def.snapshots().isEmpty()));
+			rbldr.withId(def.id());
+		}
+		else if(bldr instanceof AppRepositoryBuilder abldr) {
+			if(!def.id().equals(AppRepository.ID)) {
+				throw new IllegalStateException(MessageFormat.format("App repository ''{0}'' must have id of ''{1}''", def.id(), AppRepository.ID));
+			}
+			def.pattern().ifPresent(abldr::withPattern);
+		}
+		else if(bldr instanceof LocalRepositoryBuilder lbldr) {
+			if(!def.id().equals(LocalRepository.ID)) {
+				throw new IllegalStateException(MessageFormat.format("Local repository ''{0}'' must have id of ''{1}''", def.id(), LocalRepository.ID));
+			}
+			def.pattern().ifPresent(lbldr::withPattern);
+		}
+		else
+			throw new UnsupportedOperationException();
+		
+		return bldr.build();
+	}
+
+	private RepositoryDef findRepositoryDef(String id) {
+		var def = repositoryDefs.get(id);
+		if(def == null) {
+			if(appLayer.isPresent()) {
+				var app = ((RootLayerImpl)appLayer.get());
+				for(var parent : parents) {
+					var layer = app.layers.get(parent);
+					if(layer != null) {
+						if(layer instanceof AbstractChildLayer acl) {
+							def = acl.findRepositoryDef(id);
+							break;
+						}
+					}
+				}
+			}
+		}
+		return def;
+	}
 }

@@ -1,6 +1,14 @@
 package com.sshtools.bootlace.api;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
 public interface BootContext {
+	
+	public static boolean isDeveloper() {
+		return "true"
+				.equals(System.getProperty("bootlace.dev", String.valueOf(Files.exists(Paths.get("pom.xml")))));
+	}
 
 	public static BootContext named(String name) {
 		return new BootContext() {

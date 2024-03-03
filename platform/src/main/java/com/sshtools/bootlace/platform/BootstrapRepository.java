@@ -19,6 +19,16 @@ import com.sshtools.bootlace.api.Repository;
 public final class BootstrapRepository implements LocalRepository {
 	private final static Log LOG = Logs.of(BootLog.RESOLUTION);
 	
+	public final static String ID = "bootstrap";
+	
+	private static class LazyBootstrapRepository {
+		static BootstrapRepository DEFAULT = (BootstrapRepository)new BootstrapRepository.BootstrapRepositoryBuilder().build();
+	}
+
+	public static BootstrapRepository bootstrapRepository() {
+		return LazyBootstrapRepository.DEFAULT;
+	}
+	
 	public final static Path m2Local() {
 		return Paths.get(System.getProperty("user.home")).
 				resolve(".m2").
@@ -29,17 +39,18 @@ public final class BootstrapRepository implements LocalRepository {
 		
 		private Set<Path> roots = new LinkedHashSet<>(); 
 		private String name = "Bootstrap";
+		private String pattern = System.getProperty("bootlace.bootstrap.pattern", "%G/%a/%v/%a-%v.jar");
 		
 		@Override
 		public BootstrapRepository build() {
 			return new BootstrapRepository(this);
 		}
 
-		@Override
-		public String id() {
-			return "bootstrap";
+		public BootstrapRepositoryBuilder withPattern(String pattern) {
+			this.pattern = pattern;
+			return this;
 		}
-
+		
 		public BootstrapRepositoryBuilder withName(String name) {
 			this.name = name;
 			return this;
@@ -60,11 +71,14 @@ public final class BootstrapRepository implements LocalRepository {
 	}
 	
 	private final String name;
+	private final String pattern;
 	private Set<Path> roots;
+
 
 	private BootstrapRepository(BootstrapRepositoryBuilder bldr) {
 		this.name = bldr.name;
 		this.roots = bldr.roots;
+		this.pattern = bldr.pattern;
 	}
 
 	@Override
@@ -74,7 +88,7 @@ public final class BootstrapRepository implements LocalRepository {
 
 	@Override
 	public String id() {
-		return "bootstrap";
+		return BootstrapRepository.ID;
 	}
 
 	@Override
@@ -135,8 +149,7 @@ public final class BootstrapRepository implements LocalRepository {
 	}
 
 	protected Path resolveGav(Path root, GAV gav) {
-		return root.resolve(Repositories.dottedToPath(gav.groupId())).resolve(gav.artifactId()).resolve(gav.version())
-				.resolve(gav.artifactId() + "-" + gav.version() + ".jar");
+		return root.resolve(LocalRepository.gavPath(pattern, gav));
 	}
 
 }

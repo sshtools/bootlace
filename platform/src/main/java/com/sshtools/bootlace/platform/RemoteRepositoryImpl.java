@@ -1,7 +1,5 @@
-package com.sshtools.bootlace.repositories;
+package com.sshtools.bootlace.platform;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,7 +16,7 @@ import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.bootlace.api.SnapshotMetaData;
 
-public final class MavenRemoteRepositoryImpl implements RemoteRepository {
+public final class RemoteRepositoryImpl implements RemoteRepository {
 
 	public final static class RemoteRepositoryBuilder implements RemoteRepository.RemoteRepositoryBuilder {
 		private URI root = URI.create("https://repo1.maven.org/maven2");
@@ -52,12 +50,7 @@ public final class MavenRemoteRepositoryImpl implements RemoteRepository {
 
 		@Override
 		public RemoteRepository build() {
-			return new MavenRemoteRepositoryImpl(this);
-		}
-
-		@Override
-		public String id() {
-			return id;
+			return new RemoteRepositoryImpl(this);
 		}
 
 		@Override
@@ -79,10 +72,10 @@ public final class MavenRemoteRepositoryImpl implements RemoteRepository {
 	private final boolean releases;
 	private final boolean snapshots;
 
-	public MavenRemoteRepositoryImpl(RemoteRepositoryBuilder builder) {
+	public RemoteRepositoryImpl(RemoteRepositoryBuilder builder) {
 		this.root = builder.root;
 		this.name = builder.name;
-		this.id = builder.id();
+		this.id = builder.id;
 		
 		releases = builder.releases.orElse(builder.snapshots.isEmpty());
 		snapshots = builder.snapshots.orElse(builder.releases.isEmpty());

@@ -17,10 +17,14 @@ public final class POM {
 
 	public static POM of(Path path) {
 		try (var in = Files.newInputStream(path)) {
-			return new POM(in);
+			return of(in);
 		} catch (IOException ioe) {
 			throw new UncheckedIOException(ioe);
 		}
+	}
+
+	public static POM of(InputStream in) {
+		return new POM(in);
 	}
 
 	private final GAV gav;

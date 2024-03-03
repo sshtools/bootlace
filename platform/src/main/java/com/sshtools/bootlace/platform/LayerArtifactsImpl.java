@@ -124,7 +124,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	
 				LOG.info("Found contributed descriptor in {0}", artifactFile);
 				
-				processDescriptor(pluginLayerDef, descriptor);
+				processDescriptor(pluginLayerDef, descriptor, artifactFile);
 			}
 			catch(NotALayer nle) {
 				if(LOG.debug())
@@ -159,11 +159,15 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	}
 	
 	private void addArtifactsIfNotDone(ArtifactRef ref) {
-		if(!artifactsDone.contains(ref))
+		if(!artifactsDone.contains(ref)) {
+			if(LOG.debug()) {
+				LOG.debug("Queueing artifact ''{0}'''", ref);
+			}
 			artifactsToDo.add(ref);
+		}
 	}
 	
-	private void processDescriptor(PluginLayerImpl pluginLayerDef, Descriptor descriptor) {
+	private void processDescriptor(PluginLayerImpl pluginLayerDef, Descriptor descriptor, Path descriptorPath) {
 		/* TODO: This is all very similar to what happens in PluginLayerImpl. It 
 		 * should be re-used
 		 */
@@ -215,8 +219,12 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		arts.ifPresent(art -> { 
 			art.values().forEach((k, v) -> {
 				if(k.equals("*")) {
+					if(LOG.debug()) {
+						LOG.debug("Adding all direct maven depednencies for ''{0}''", descriptor.id());
+					}
+					
 					pluginLayerDef.artifacts().forEach(defArt -> {
-						Artifact.find(defArt).pom().dependencies().forEach(gav -> 
+						Artifact.find(defArt, descriptorPath).pom().dependencies().forEach(gav -> 
 							addArtifactsIfNotDone(ArtifactRef.of(gav))
 						);
 					});

@@ -1,4 +1,4 @@
-package com.sshtools.bootlace.api;
+package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -7,6 +7,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
+import com.sshtools.bootlace.api.ArtifactRef;
+import com.sshtools.bootlace.api.Logs;
+import com.sshtools.bootlace.api.Zip;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
 

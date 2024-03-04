@@ -55,7 +55,7 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 		descriptor.artifacts().ifPresent(a -> {
 			throw new IllegalArgumentException("The root layer may have no artifacts.");
 		});
-		withUserAgent(l.getOr("userAgent"));
+		withUserAgent(l.getOr("user-agent"));
 		descriptor.layers().forEach(g -> {
 			var type = g.getOr("type").orElse("static");
 			if (type.equals("dynamic")) {

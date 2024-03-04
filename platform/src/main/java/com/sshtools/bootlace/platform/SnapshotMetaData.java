@@ -1,4 +1,4 @@
-package com.sshtools.bootlace.api;
+package com.sshtools.bootlace.platform;
 
 import java.io.InputStream;
 import java.net.URI;
@@ -8,6 +8,9 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+
+import com.sshtools.bootlace.api.GAV;
+import com.sshtools.bootlace.api.XML;
 
 public final class SnapshotMetaData {
 

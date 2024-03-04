@@ -1,4 +1,4 @@
-package com.sshtools.bootlace.api;
+package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,6 +10,10 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
+
+import com.sshtools.bootlace.api.GAV;
+import com.sshtools.bootlace.api.XML;
+import com.sshtools.bootlace.api.GAV.Builder;
 
 public final class POM {
 	

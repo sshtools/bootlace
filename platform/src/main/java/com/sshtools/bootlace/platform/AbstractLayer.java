@@ -15,8 +15,6 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.Layer;
@@ -27,10 +25,11 @@ import com.sshtools.bootlace.api.Logs.Log;
 import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.Repository;
 import com.sshtools.bootlace.api.ResolutionMonitor;
+import com.sshtools.bootlace.api.RootLayer;
 import com.sshtools.jini.INI;
 import com.sshtools.jini.INI.Section;
 
-class AbstractLayer implements Layer {
+abstract class AbstractLayer implements Layer {
 
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
 
@@ -95,9 +94,9 @@ class AbstractLayer implements Layer {
 		@SuppressWarnings("unchecked")
 		public L fromDescriptor(Descriptor descriptor) {
 			return (L) fromComponentSection(descriptor.component()).
-					   fromRepositoryDefsSection(RemoteRepository.class, descriptor.remoteRepositories()).
-					   fromRepositoryDefsSection(AppRepository.class, descriptor.appRepositories()).
-					   fromRepositoryDefsSection(LocalRepository.class, descriptor.localRepositories());
+					   fromRepositoryDefsSection(RemoteRepository.class, descriptor.repositories()).
+					   fromRepositoryDefsSection(AppRepository.class, descriptor.repositories()).
+					   fromRepositoryDefsSection(LocalRepository.class, descriptor.repositories());
 		}
 
 		public final L fromINI(Path path) {
@@ -237,7 +236,7 @@ class AbstractLayer implements Layer {
 			return new RepositoryDef(
 					type,
 					sec.key(), 
-					sec.getOr("name").orElseGet(() -> sec.get("id")), 
+					sec.getOr("name").orElseGet(() -> sec.key()), 
 					sec.getOr("root").map(URI::create).orElseThrow(()-> new IllegalArgumentException("No 'root' in repository def section.")),
 					sec.getBooleanOr("releases"), 
 					sec.getBooleanOr("snapshots"),
@@ -274,9 +273,19 @@ class AbstractLayer implements Layer {
 		this.appRepositories = new LinkedHashSet<>(builder.appRepositories); 
 		this.remoteRepositories = new LinkedHashSet<>(builder.remoteRepositories);
 		this.localRepositories = new LinkedHashSet<>(builder.localRepositories);
-		this.repositoryDefs = new HashMap<>(builder.repositoryDefs.stream().collect(Collectors.toMap(RepositoryDef::id, Function.identity())));
+		this.repositoryDefs = new HashMap<>();
+		builder.repositoryDefs.stream().forEach(v -> repositoryDefs.put(v.id(), v));
 		this.monitor = builder.monitor;
 		this.global = builder.global;
+		
+		if(LOG.debug()) {
+			if(!repositoryDefs.isEmpty()) {
+				LOG.info("Layer ''{0}'' has {1} repository defs", id, repositoryDefs.size());
+				repositoryDefs.forEach((k,v) ->
+					LOG.info("   {0} = {1}", k, v.root()) 
+				);
+			}
+		}
 	}
 
 	@Override
@@ -319,5 +328,50 @@ class AbstractLayer implements Layer {
 		return "AbstractLayer [id=" + id + ", name=" + name + ", global=" + global + ", appRepositories="
 				+ appRepositories + ", localRepositories=" + localRepositories + ", monitor=" + monitor
 				+ ", remoteRepositories=" + remoteRepositories + "]";
+	}
+	
+	protected abstract Set<String> parents();
+	
+	public abstract Optional<RootLayer> appLayer();
+	
+	protected RepositoryDef findRepositoryDef(String id) {
+		var def = repositoryDefs.get(id);
+		if(LOG.trace()) {
+			LOG.debug("Looking for repository ''{0}'' in layer ''{1}''", id,  id());
+		}
+		if(def == null) {
+			if(appLayer().isPresent()) {
+				var app = ((RootLayerImpl)appLayer().get());
+				var parents = parents();
+				
+				if(LOG.trace()) {
+					LOG.debug("''{0}'' does not exist in layer ''{1}'', trying {2} parents", id, id(), parents.size());
+				}
+				
+				for(var parent : parents) {
+					var layer = app.layers.get(parent);
+					if(layer != null) {
+						if(layer instanceof AbstractChildLayer acl) {
+							def = acl.findRepositoryDef(id);
+							break;
+						}
+					}
+				}
+				
+				if(def == null) {
+					if(LOG.trace()) {
+						LOG.debug("''{0}'' does not exist in layer ''{1}'' or any parents, trying app layer itself", id, id());
+					}	 
+					
+					def = app.findRepositoryDef(id);
+				}
+			}
+			else {
+				if(LOG.trace()) {
+					LOG.debug("''{0}'' does not exist in layer ''{1}'', no app layer to try", id, id());
+				}
+			}
+		}
+		return def;
 	}
 }

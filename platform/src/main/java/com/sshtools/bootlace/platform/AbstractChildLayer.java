@@ -154,7 +154,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 		var l = new LinkedHashSet<REPO>();
 		
 		for (var repoId : supplier.apply(this)) {
-			builderForId(repoId, repoClass, bldrClass)
+			resolveRepository(repoId, repoClass, bldrClass)
 					.ifPresent(repo -> l.add(repo));
 		}
 			
@@ -183,11 +183,19 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 	}
 
  	@SuppressWarnings("unchecked")
-	private <BLDR extends RepositoryBuilder<BLDR, REPO>, REPO extends Repository> Optional<REPO> builderForId( 
+	private <BLDR extends RepositoryBuilder<BLDR, REPO>, REPO extends Repository> Optional<REPO> resolveRepository( 
 			String id, Class<? extends REPO> repoClass, Class<? extends BLDR> builderClass) {
+ 		
+ 		if (LOG.debug()) {
+			LOG.debug("Looking for repository definition ''{0}'', type ''{1}'' for layer ''{2}''", id, repoClass.getName(), id());
+		}
  		
  		var def = findRepositoryDef(id);
  		if(def == null) {
+ 			if (LOG.debug()) {
+				LOG.debug("No custom repository configuration, using defaults");
+			}
+ 			
  			if(id.equals(BootstrapRepository.ID)) {
  				return (Optional<REPO>) ((RootLayerImpl)appLayer.get()).bootstrapRepository();
  			}
@@ -201,7 +209,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
  				throw new IllegalArgumentException(MessageFormat.format("No repository def for ''{0}''.", id));
  			}
  		}
- 		if(def.type().equals(repoClass)) {
+ 		if(!def.type().equals(repoClass)) {
  			throw new IllegalArgumentException(MessageFormat.format("Unexpected repository type for ''{0}''. Expected ''{1}'', got ''{2}''.", id, repoClass.getName(), def.type().getName()));
  		}
  		
@@ -211,7 +219,14 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			LOG.debug("NO repository builder of type ''{0}'' of class ''{1}'' in child layers of ''{2}'', trying service layers", id, builderClass.getName(), thisModuleLayer);
 		}
 		else {
-			return Optional.of(configureBuilder(def, bldrOr.get()));
+			
+			var bldr = bldrOr.get();
+			
+ 			if (LOG.debug()) {
+				LOG.debug("Found builder {0}", bldr.getClass().getName());
+			}
+ 			
+			return Optional.of(configureBuilder(def, bldr));
 		}
 		
 		var layerCtx = LayerContext.get(builderClass);
@@ -256,24 +271,5 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			throw new UnsupportedOperationException();
 		
 		return bldr.build();
-	}
-
-	private RepositoryDef findRepositoryDef(String id) {
-		var def = repositoryDefs.get(id);
-		if(def == null) {
-			if(appLayer.isPresent()) {
-				var app = ((RootLayerImpl)appLayer.get());
-				for(var parent : parents) {
-					var layer = app.layers.get(parent);
-					if(layer != null) {
-						if(layer instanceof AbstractChildLayer acl) {
-							def = acl.findRepositoryDef(id);
-							break;
-						}
-					}
-				}
-			}
-		}
-		return def;
 	}
 }

@@ -103,7 +103,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	protected final Map<String, ChildLayer> layers;
 
 	protected final Map<String, ModuleLayer> moduleLayers = new ConcurrentHashMap<>();
-
+	
 	RootLayerImpl(RootLayerBuilder builder) {
 		super(builder);
 
@@ -117,6 +117,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		layers = builder.layers.stream().collect(Collect.toLinkedMap(ChildLayer::id, Function.identity()));
 
 		layers.forEach((k, v) -> ((AbstractChildLayer) v).appLayer(this));
+		LOG.debug("Attached root layer to child layers");
 
 		sem.tryAcquire();
 		app = builder.appContext;
@@ -128,7 +129,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		});
 
 	}
-
+	
 	public Optional<BootstrapRepository> bootstrapRepository() {
 		return bootstrapRepository;
 	}
@@ -448,5 +449,15 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		}
 
 		return parentLayers.isEmpty() ? Set.of(ModuleLayer.boot()) : parentLayers;
+	}
+
+	@Override
+	public Optional<RootLayer> appLayer() {
+		return Optional.of(this);
+	}
+
+	@Override
+	protected Set<String> parents() {
+		return Collections.emptySet();
 	}
 }

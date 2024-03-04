@@ -194,6 +194,10 @@ public final class DynamicLayer extends AbstractChildLayer {
 		}
 
 	}
+	
+	public Path path() {
+		return directory;
+	}
 
 	private Path resolveDirectory(Builder builder) throws IOException {
 		var directory = builder.directory.orElseGet(() -> defaultPluginsRoot());

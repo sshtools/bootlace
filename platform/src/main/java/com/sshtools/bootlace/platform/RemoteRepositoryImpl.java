@@ -14,7 +14,6 @@ import com.sshtools.bootlace.api.Http;
 import com.sshtools.bootlace.api.Http.HttpClientFactory;
 import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.ResolutionMonitor;
-import com.sshtools.bootlace.api.SnapshotMetaData;
 
 public final class RemoteRepositoryImpl implements RemoteRepository {
 

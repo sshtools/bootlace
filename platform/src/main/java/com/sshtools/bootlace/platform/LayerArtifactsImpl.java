@@ -17,7 +17,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.sshtools.bootlace.api.AppRepository;
-import com.sshtools.bootlace.api.Artifact;
 import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.Exceptions.NotALayer;
 import com.sshtools.bootlace.api.GAV;

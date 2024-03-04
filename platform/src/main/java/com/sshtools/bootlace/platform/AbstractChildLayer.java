@@ -262,9 +262,6 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			def.pattern().ifPresent(abldr::withPattern);
 		}
 		else if(bldr instanceof LocalRepositoryBuilder lbldr) {
-			if(!def.id().equals(LocalRepository.ID)) {
-				throw new IllegalStateException(MessageFormat.format("Local repository ''{0}'' must have id of ''{1}''", def.id(), LocalRepository.ID));
-			}
 			def.pattern().ifPresent(lbldr::withPattern);
 		}
 		else

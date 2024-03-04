@@ -5,7 +5,7 @@ import java.io.InputStream;
 import java.nio.file.Path;
 
 public interface AppRepository extends Repository {
-	public static final String ID = "repository";
+	public static final String ID = "app";
 	
 	public interface AppRepositoryBuilder extends Repository.RepositoryBuilder<AppRepositoryBuilder, AppRepository> {
 		

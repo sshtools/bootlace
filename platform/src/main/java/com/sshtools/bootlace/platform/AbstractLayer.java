@@ -342,28 +342,30 @@ abstract class AbstractLayer implements Layer {
 		if(def == null) {
 			if(appLayer().isPresent()) {
 				var app = ((RootLayerImpl)appLayer().get());
-				var parents = parents();
-				
-				if(LOG.trace()) {
-					LOG.debug("''{0}'' does not exist in layer ''{1}'', trying {2} parents", id, id(), parents.size());
-				}
-				
-				for(var parent : parents) {
-					var layer = app.layers.get(parent);
-					if(layer != null) {
-						if(layer instanceof AbstractChildLayer acl) {
-							def = acl.findRepositoryDef(id);
-							break;
+				if(!app.equals(this)) {
+					var parents = parents();
+					
+					if(LOG.trace()) {
+						LOG.debug("''{0}'' does not exist in layer ''{1}'', trying {2} parents", id, id(), parents.size());
+					}
+					
+					for(var parent : parents) {
+						var layer = app.layers.get(parent);
+						if(layer != null) {
+							if(layer instanceof AbstractChildLayer acl) {
+								def = acl.findRepositoryDef(id);
+								break;
+							}
 						}
 					}
-				}
-				
-				if(def == null) {
-					if(LOG.trace()) {
-						LOG.debug("''{0}'' does not exist in layer ''{1}'' or any parents, trying app layer itself", id, id());
-					}	 
 					
-					def = app.findRepositoryDef(id);
+					if(def == null) {
+						if(LOG.trace()) {
+							LOG.debug("''{0}'' does not exist in layer ''{1}'' or any parents, trying app layer itself", id, id());
+						}	 
+						
+						def = app.findRepositoryDef(id);
+					}
 				}
 			}
 			else {

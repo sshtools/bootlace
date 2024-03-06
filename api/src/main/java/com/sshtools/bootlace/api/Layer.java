@@ -15,7 +15,7 @@ public interface Layer {
 	Set<String> remoteRepositories();
 
 	Set<String> localRepositories();
-
+	
 	boolean global();
 
 	default Optional<LayerArtifacts> finalArtifacts() {

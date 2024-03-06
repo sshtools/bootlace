@@ -67,10 +67,7 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 	@Parameter(required = true, readonly = true, property = "project")
 	protected MavenProject project;
 
-	/**
-	 * Skip generating for POM types
-	 */
-	@Parameter(defaultValue = "true", property = "bootlace.attach")
+	@Parameter(defaultValue = "true", property = "attach")
 	private boolean attach = true;
 
 	/**
@@ -135,12 +132,10 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 			Properties sourceProperties = new Properties();
 
-			var artifacts = new ArrayList<Artifact>();
+			var filteredList = project.getArtifacts().stream().filter(a -> !"provided".equals(a.getScope()) || provided).toList();
+			log.info("Adding " + filteredList.size() + " primary artifacts ");
 
-			log.info("Adding " + project.getArtifacts().size() + " primary artifacts ");
-			artifacts.addAll(project.getArtifacts());
-
-			generateZip(sourceProperties, storeTarget, artifacts);
+			generateZip(sourceProperties, storeTarget, filteredList);
 
 			if (attach) {
 				log.info("Attaching artifact as bootlace zip");

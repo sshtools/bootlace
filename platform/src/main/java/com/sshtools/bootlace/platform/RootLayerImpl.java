@@ -2,13 +2,18 @@ package com.sshtools.bootlace.platform;
 
 import static java.lang.String.format;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.module.Configuration;
 import java.lang.module.ModuleFinder;
+import java.net.URL;
 import java.nio.file.Path;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +23,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
+import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 
 import com.sshtools.bootlace.api.BootContext;
@@ -52,6 +58,67 @@ import com.sshtools.bootlace.api.RootLayer;
  */
 public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	
+	private final class ChildPluginContext implements PluginContext {
+		private final ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects;
+		private final Set<ModuleLayer> parents;
+		private final List<AutoCloseable> closeable = new ArrayList<>();
+
+		private ChildPluginContext(ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects,
+				Set<ModuleLayer> parents) {
+			this.pluginObjects = pluginObjects;
+			this.parents = parents;
+		}
+
+		@Override
+		public void autoClose(AutoCloseable... closeable) {
+			this.closeable.addAll(Arrays.asList(closeable));
+		}
+
+		@Override
+		public void close() {
+			closeable.forEach(t -> {
+				try {
+					t.close();
+				} catch (Exception e) {
+				}
+			});
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public <P extends Plugin> Optional<P> pluginOr(Class<P> plugin) {
+			var res = Optional.ofNullable((P) pluginObjects.get(plugin));
+			if(res.isEmpty()) {
+				res = searchParents(parents, plugin);
+			}
+			return res;
+		}
+
+		@Override
+		public RootContext root() {
+			return root;
+		}
+
+		private <P extends Plugin> Optional<P> searchParents(Collection<ModuleLayer> parents, Class<P> plugin) {
+			for(var mod : parents) {
+				var ctx  = LayerContext.get(mod);
+				var lyr = ctx.layer();
+				if(lyr instanceof PluginLayer) {
+					var plyr = (PluginLayer)lyr;
+					for(var ref : plyr.pluginRefs()) {
+						var pRes = ref.context().pluginOr(plugin);
+						if(pRes.isPresent())
+							return pRes;
+					}
+				}
+				var pRes = searchParents(mod.parents(), plugin);
+				if(pRes.isPresent())
+					return pRes;
+			}
+			return Optional.empty();
+		}
+	}
+
 	class RootContextImpl implements RootContext {
 
 		private List<Listener> listeners = new ArrayList<>();
@@ -90,6 +157,11 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		public void restart() {
 		}
 
+		@Override
+		public Optional<URL> globalResource(String path) {
+			return RootLayerImpl.this.globalResource(path);
+		}
+
 	}
 
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
@@ -101,8 +173,12 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	private final String userAgent;
 	private final Optional<BootstrapRepository> bootstrapRepository;
 	protected final Map<String, ChildLayer> layers;
+	private Map<Class<? extends Plugin>, Plugin> pluginObjects = new ConcurrentHashMap<>();
+	private Map<String, ClassLoader> globalResourceLoaders = new HashMap<>();
 
 	protected final Map<String, ModuleLayer> moduleLayers = new ConcurrentHashMap<>();
+
+	private boolean useDeprecatedLoading;
 	
 	RootLayerImpl(RootLayerBuilder builder) {
 		super(builder);
@@ -127,9 +203,43 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			open(l);
 			afterOpen(l);
 		});
+		
+		pluginObjects.forEach((k,v) -> {
+			/* TODO move this to plugin loading .. so they are unregistered on unload */
+			try {
+				var en = v.getClass().getClassLoader().getResources("META-INF/MANIFEST.MF");
+				while(en.hasMoreElements()) {
+					var url = en.nextElement();
+					try(var in = url.openStream()) {
+						var mf = new Manifest(in);
+						var resources = mf.getMainAttributes().getValue("X-NPM-Resources");
+						if(resources == null) {							
+							resources = mf.getMainAttributes().getValue("X-Bootlace-Resources");
+						}
+						if(resources != null) {
+							globalResourceLoaders.put(resources, v.getClass().getClassLoader());
+						}
+					}
+				}
+			}
+			catch(IOException ioe) {
+				throw new UncheckedIOException(ioe);
+			}
+		});
 
 	}
 	
+	@Override
+	public Optional<URL> globalResource(String path) {
+		var fullPath ="npm2mvn/" + path;
+		for(var en : globalResourceLoaders.entrySet()) {
+			if(fullPath.startsWith(en.getKey() + "/")) {
+				return Optional.ofNullable(en.getValue().getResource(fullPath));
+			}
+		}
+		return Optional.empty();
+	}
+
 	public Optional<BootstrapRepository> bootstrapRepository() {
 		return bootstrapRepository;
 	}
@@ -260,13 +370,12 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		LOG.debug(layerDef);
 
 		var id = layerDef.id();			
-		var childLoader = new ChildLayerLoader(layerDef, ClassLoader.getSystemClassLoader());
 			
 		monitor().ifPresent(mon -> mon.loadingLayer(layerDef));
 		if (layerDef instanceof PluginLayer) {
-
+			
 			if (LOG.debug()) {
-				LOG.debug("{0} is a plugin layer", layerDef.id());
+				LOG.debug("{0} is a plugin layer", id);
 			}
 
 			//
@@ -275,12 +384,8 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			pluginLayerDef.layerArtifacts = Optional.of(layerArtifacts);
 			var paths = layerArtifacts.paths(); 
 
-			var parents = parents(id, layerDef.parents());
-			
-			var layer = create(id, parents, paths, childLoader);
-			moduleLayers.put(id, layer);
-
-			LayerContextImpl.register(layer, layerDef, childLoader);
+			var parents = parents(layerDef);
+			ModuleLayer layer = createAndRegisterLoader(layerDef, paths, parents);
 
 			loadPlugins(pluginLayerDef, id, parents, layer);
 		
@@ -307,11 +412,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 				LOG.debug("{0} is a dynamic layer", layerDef.id());
 			}
 			
-			var parents = parents(id, layerDef.parents());
-			var layer = create(id, parents, Collections.emptySet(), childLoader);
-			moduleLayers.put(id, layer);
-			
-			LayerContextImpl.register(layer, layerDef, childLoader);
+			createAndRegisterLoader(layerDef, Collections.emptySet(), parents(layerDef));
 		}
 
 			
@@ -320,22 +421,46 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		monitor().ifPresent(mon -> mon.loadedLayer(layerDef));
 	}
 
-	private ModuleLayer create(String layerId, Set<ModuleLayer> parentLayers, Set<Path> modulePathEntries, ChildLayerLoader childLoader) {
+	private ModuleLayer createAndRegisterLoader(ChildLayer layerDef, Set<Path> paths,
+			Set<ModuleLayer> parents) {
+		ModuleLayer layer;
+		ClassLoader childLoader;
+		if(useDeprecatedLoading) {
+			childLoader = new ChildLayerLoader(layerDef, ClassLoader.getSystemClassLoader());
+			layer = createModuleLayer(layerDef.id(), parents, paths, childLoader);
+			((ChildLayerLoader)childLoader).module(layer);
+		}
+		else {				
+			layer = createModuleLayer(layerDef.id(), parents, paths, ClassLoader.getSystemClassLoader());
+			var modules = layer.modules();
+			if(modules.isEmpty()) {
+				childLoader = ClassLoader.getSystemClassLoader();
+			}
+			else {
+				childLoader = layer.findLoader(modules.iterator().next().getName());
+			}
+		}	
+		moduleLayers.put(layerDef.id(), layer);
+		LayerContextImpl.register(layer, layerDef, childLoader);
+		
+		return layer;
+	}
+
+	private ModuleLayer createModuleLayer(String layerId, Set<ModuleLayer> parentLayers, Set<Path> modulePathEntries, ClassLoader childLoader) {
+	
 		var finder = ModuleFinder.of(modulePathEntries.toArray(Path[]::new));
 
-		var roots = finder.findAll().stream().map(m -> m.descriptor().name()).collect(Collectors.toSet());
+		var roots = finder.findAll().stream().map(m -> m.descriptor().name()).
+				collect(Collectors.toSet());
 
 		var appConfig = Configuration.resolveAndBind(finder,
-				parentLayers.stream().map(ModuleLayer::configuration).collect(Collectors.toList()), ModuleFinder.of(),
+				parentLayers.stream().map(ModuleLayer::configuration).
+					collect(Collectors.toList()), ModuleFinder.of(),
 				roots);
-
-//		var module = ModuleLayer.defineModulesWithOneLoader(appConfig, parentLayers.stream().toList(),
-//				/*childLoader*/ClassLoader.getSystemClassLoader()).layer();
 		
 		var module = ModuleLayer.defineModulesWithOneLoader(appConfig, parentLayers.stream().toList(),
 				childLoader).layer();
 		
-		childLoader.module(module);
 		return module;
 	}
 
@@ -349,82 +474,36 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		 */
 		var pluginObjects = new ConcurrentHashMap<Class<? extends Plugin>, Plugin>();
 		
-		var it = ServiceLoader.load(layer, Plugin.class).iterator();
+		var it = ServiceLoader.load(layer, Plugin.class).stream().iterator();
 		while(it.hasNext()) {
 			
 			/* Create context first and register it so it can be accessed by plugins
 			 * while they are being instantiated (e.g. for accessing plugin instances
 			 * statically when defining member variables)
 			 */
-			var context = new PluginContext() {
-
-				private final List<AutoCloseable> closeable = new ArrayList<>();
-
-				@Override
-				public void autoClose(AutoCloseable... closeable) {
-					this.closeable.addAll(Arrays.asList(closeable));
-				}
-
-				@Override
-				public void close() {
-					closeable.forEach(t -> {
-						try {
-							t.close();
-						} catch (Exception e) {
-						}
-					});
-				}
-
-				@SuppressWarnings("unchecked")
-				@Override
-				public <P extends Plugin> Optional<P> pluginOr(Class<P> plugin) {
-					var res = Optional.ofNullable((P) pluginObjects.get(plugin));
-					if(res.isEmpty()) {
-						res = searchParents(parents, plugin);
-					}
-					return res;
-				}
-
-				@Override
-				public RootContext root() {
-					return root;
-				}
-
-				private <P extends Plugin> Optional<P> searchParents(Collection<ModuleLayer> parents, Class<P> plugin) {
-					for(var mod : parents) {
-						var ctx  = LayerContext.get(mod);
-						var lyr = ctx.layer();
-						if(lyr instanceof PluginLayer) {
-							var plyr = (PluginLayer)lyr;
-							for(var ref : plyr.pluginRefs()) {
-								var pRes = ref.context().pluginOr(plugin);
-								if(pRes.isPresent())
-									return pRes;
-							}
-						}
-						var pRes = searchParents(mod.parents(), plugin);
-						if(pRes.isPresent())
-							return pRes;
-					}
-					return Optional.empty();
-				}
-			};
+			var context = new ChildPluginContext(pluginObjects, parents);
 			PluginContextProviderImpl.current.set(context);
 			try {
 			
-				var plugin = it.next();
+				var pluginProvider = it.next();
+				var type = pluginProvider.type();
+				var modLayer = type.getModule().getLayer();
 				
-				if(!plugin.getClass().getModule().getLayer().equals(layer)) {
+				if(!modLayer.equals(layer)) {
 					if(LOG.trace())
-						LOG.trace("Skipping plugin ''{0}'' because it's in a parent layer.", plugin.getClass().getName());
+						LOG.trace("Skipping plugin ''{0}'' because it is in a different layer.", type.getName());
 					continue;
 				}
 				
+				var plugin = pluginProvider.get();
 	
 				LOG.info("Loading plugin ''{0}''", plugin.getClass().getName());
 	
 				pluginLayer.pluginRefs.add(new PluginRef(plugin, context));
 				pluginObjects.put(plugin.getClass(), plugin);
+				if(this.pluginObjects.put(plugin.getClass(), plugin) != null) {
+					throw new IllegalStateException(MessageFormat.format("Plugin ''{0}'' found more than once.",  plugin.getClass().getName()));
+				}
 	
 				LOG.info("Loaded plugin ''{0}''", plugin.getClass().getName());
 			}
@@ -435,14 +514,14 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		
 	}
 
-	private Set<ModuleLayer> parents(String name, Collection<String> parents) {
+	private Set<ModuleLayer> parents(ChildLayer layer) {
 		var parentLayers = new LinkedHashSet<ModuleLayer>();
 
-		for (String parent : parents) {
+		for (String parent : layer.parents()) {
 			ModuleLayer parentLayer = moduleLayers.get(parent);
 			if (parentLayer == null) {
 				throw new IllegalArgumentException(
-						"Layer '" + name + "': parent layer '" + parent + "' not configured yet");
+						"Layer '" + layer.id() + "': parent layer '" + parent + "' not configured yet");
 			}
 
 			parentLayers.add(parentLayer);

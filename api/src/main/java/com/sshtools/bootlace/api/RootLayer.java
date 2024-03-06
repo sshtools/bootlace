@@ -1,5 +1,6 @@
 package com.sshtools.bootlace.api;
 
+import java.net.URL;
 import java.util.Optional;
 
 public interface RootLayer extends Layer {
@@ -15,5 +16,7 @@ public interface RootLayer extends Layer {
 //	void open(ChildLayer layerDef);
 	
 	ChildLayer getLayer(String id);
+	
+	Optional<URL> globalResource(String path);
 
 }

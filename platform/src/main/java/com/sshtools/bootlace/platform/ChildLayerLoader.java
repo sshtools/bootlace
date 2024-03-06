@@ -80,8 +80,7 @@ public final class ChildLayerLoader extends ClassLoader {
 				}
 			}
 			return url;
-		}
-		else
+		} else
 			return null;
 	}
 
@@ -101,26 +100,41 @@ public final class ChildLayerLoader extends ClassLoader {
 
 		if (!Boolean.TRUE.equals(defeatFindResource.get())) {
 
-			if (LOG.debug())
-				LOG.debug("getResource(''{0}'')", name);
+			var thisLayerCtx = LayerContext.get(moduleLayer);
 
-			for (var child : LayerContext.get(moduleLayer).childLayers()) {
-				var ctx = LayerContext.get(child);
-				var aloader = child.findLoader("com.sshtools.jenny.io");
-				defeatGetResource.set(true);
+			if (LOG.debug())
+				LOG.debug("getResource(''{0}'') in {1} ({2})", name, hashCode(), thisLayerCtx.layer().id());
+
+			for (var child : thisLayerCtx.childLayers()) {
+				var it = child.modules().iterator();
+				
+				
 				URL url = null;
-				try {
-					url = aloader.getResource(name);
-				}
-				finally {
-					defeatGetResource.set(false);
-				}
+				while (it.hasNext()) {
+					var clayer = it.next();
+					
+					if (LOG.debug())
+						LOG.debug("    Module {0}", clayer.getName());
 				
-				
-				if (url != null) {
-					return url;
+					var aloader = clayer.getLayer().findLoader(clayer.getName());
+					
+					
+					defeatGetResource.set(true);
+					try {
+						url = aloader.getResource(name);
+					} finally {
+						defeatGetResource.set(false);
+					}
+
+					if (url != null) {
+						return url;
+					}
 				}
 			}
+
+			var url = super.findResource(name);
+			if (url != null)
+				return url;
 		}
 
 		return null;

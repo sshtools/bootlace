@@ -1,7 +1,6 @@
 package com.sshtools.bootlace.platform;
 
 import java.io.InputStream;
-import java.net.URI;
 import java.text.MessageFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;

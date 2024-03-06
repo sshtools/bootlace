@@ -1,5 +1,8 @@
 package com.sshtools.bootlace.api;
 
+import java.net.URL;
+import java.util.Optional;
+
 public interface RootContext {
 
 	public interface Listener {
@@ -10,6 +13,8 @@ public interface RootContext {
 
 //	
 	BootContext app();
+	
+	Optional<URL> globalResource(String path);
 
 	boolean canShutdown(); 
 

@@ -13,7 +13,6 @@ import java.util.Set;
 
 import com.sshtools.bootlace.api.GAV;
 import com.sshtools.bootlace.api.XML;
-import com.sshtools.bootlace.api.GAV.Builder;
 
 public final class POM {
 	

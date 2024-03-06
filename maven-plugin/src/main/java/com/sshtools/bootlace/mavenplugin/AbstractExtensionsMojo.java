@@ -73,6 +73,9 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	@Parameter(defaultValue = "${session}", required = true, readonly = true)
 	protected MavenSession session;
 
+	@Parameter(defaultValue = "true", property = "provided")
+	protected boolean provided = false;
+
 	static Map<Artifact, Path> lastVersionProcessed = new HashMap<>();
 
 	/**
@@ -261,6 +264,11 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 			log.debug("Resolving " + coordinate + " with transitive dependencies");
 			for (ArtifactResult result : dependencyResolver.resolveDependencies(buildingRequest, coordinate, null)) {
 
+				if("provided".equals(result.getArtifact().getScope()) && !provided) {
+					log.debug("Skipping provided dependency " + coordinate);
+					continue;
+				}
+				
 				/*
 				 * If the coordinate is for an extension zip, then we only we transitive
 				 * dependencies that also have an extension zip

@@ -1,6 +1,8 @@
+import com.sshtools.bootlace.api.ConfigResolver;
 import com.sshtools.bootlace.api.LayerContext;
 import com.sshtools.bootlace.api.AppRepository.AppRepositoryBuilder;
 import com.sshtools.bootlace.api.LocalRepository.LocalRepositoryBuilder;
+import com.sshtools.bootlace.api.Plugin;
 import com.sshtools.bootlace.api.PluginContext;
 import com.sshtools.bootlace.api.RemoteRepository.RemoteRepositoryBuilder;
 
@@ -13,4 +15,6 @@ module com.sshtools.bootlace.api {
 	uses AppRepositoryBuilder;
 	uses LayerContext.Provider;
 	uses PluginContext.Provider;
+	uses Plugin;
+	uses ConfigResolver;
 }

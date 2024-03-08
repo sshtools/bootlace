@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 public class Zip {
 	
@@ -159,6 +160,25 @@ public class Zip {
 		}
 		zis.closeEntry();
 	}
+	
+	public static void putNextEntry(ZipOutputStream zipOut, ZipEntry zipEntry, Path path) throws IOException {
+        var extra = new StringBuilder();
+        
+        extra.append(Files.isReadable(path) ? "R" : "r");
+        extra.append(Files.isWritable(path) ? "W" : "w");
+        extra.append(Files.isExecutable(path) ? "X" : "x");
+        
+        if(Files.isSymbolicLink(path)) {
+            var lpath = Files.readSymbolicLink(path);
+            var lpathstr = lpath.toString();
+            extra.append("L");
+            extra.append(String.format("%04d", lpathstr.length()));
+            extra.append(lpathstr);
+        }
+        
+        zipEntry.setExtra(extra.toString().getBytes("UTF-8"));
+        zipOut.putNextEntry(zipEntry);      
+    }
 
 	private static Path newFile(Path destinationDir, ZipEntry zipEntry) throws IOException {
 		var destFile = destinationDir.resolve(zipEntry.getName());

@@ -18,12 +18,34 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package com.sshtools.bootlace.platform;
+package com.sshtools.bootlace.api;
 
-import java.net.URI;
-import java.util.Optional;
+import java.nio.file.Path;
 
-import com.sshtools.bootlace.api.Repository;
+/**
+ * An extension layer is a container layer that consists of one or more further
+ * child layers, each itself an <em>Extension</em>.
+ * <p>
+ * An extension consists of a primary artifact that contains the
+ * <code>layers.ini</code> and any primary classes and resources, as well as any
+ * required dependency artifacts.
+ * <p>
+ * As with all layer artifacts, both the dependencies and primary artifacts must
+ * be JPMS compliant and contain a single <code>module-info.java</code> that
+ * defines the modules name and any dependency modules.
+ * <p>
+ * The same, or different version of, a dependency artifact may exist in
+ * multiple child extension layers, but you can never have a dependency artifact
+ * that already exists in a parent. This restriction is enforced via the JPMS
+ * module name.
+ * 
+ */
+public interface ExtensionLayer extends ChildLayer {
 
-public record RepositoryDef(Class<? extends Repository> type, String id, String name, URI root, Optional<Boolean> releases, Optional<Boolean> snapshots, Optional<String> pattern) {
+	/**
+	 * The path that contains the artifacts for the child layers in this layer.
+	 * 
+	 * @return path of layer extensions
+	 */
+	Path path();
 }

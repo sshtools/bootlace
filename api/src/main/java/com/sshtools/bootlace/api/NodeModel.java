@@ -18,12 +18,15 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package com.sshtools.bootlace.platform;
+package com.sshtools.bootlace.api;
 
-import java.net.URI;
-import java.util.Optional;
+import java.util.function.Consumer;
 
-import com.sshtools.bootlace.api.Repository;
+import com.sshtools.bootlace.api.DependencyGraph.Dependency;
 
-public record RepositoryDef(Class<? extends Repository> type, String id, String name, URI root, Optional<Boolean> releases, Optional<Boolean> snapshots, Optional<String> pattern) {
+public interface NodeModel {
+
+	String name();
+	
+	void dependencies(Consumer<Dependency> model);
 }

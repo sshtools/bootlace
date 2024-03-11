@@ -1,3 +1,23 @@
+/**
+ * Copyright © 2023 JAdaptive Limited (support@jadaptive.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the “Software”), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies
+ * or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
@@ -22,31 +42,27 @@ public class ConfigResolverImpl implements ConfigResolver {
 			return resolvePluginFile(appId, plugin, ext);			
 		}
 	}
-
+	
 	@Override
-	public Path resolveVendorDir(String appId) {
+	public Path resolveDir(String appId, Scope scope) {
 		try {
-			return checkDir(resolveConfDir(appId).resolve("vendor"));
-		} catch (AccessDeniedException e) {
-			throw new UncheckedIOException(e);
-		}
-	}
-
-	@Override
-	public Path resolvePluginDir(String appId) {
-		try {
-			return checkDir(resolveConfDir(appId).resolve("plugins"));
+			switch(scope) {
+			case VENDOR:
+				return checkDir(resolveConfDir(appId).resolve("vendor"));
+			default:
+				return checkDir(resolveConfDir(appId).resolve("extensions"));			
+			}
 		} catch (AccessDeniedException e) {
 			throw new UncheckedIOException(e);
 		}
 	}
 
 	private Path resolvePluginFile(String appId, Class<? extends Plugin> plugin, String ext) {
-		return resolvePluginDir(appId).resolve(resolveFile(plugin, ext));
+		return resolveDir(appId, Scope.PLUGINS).resolve(resolveFile(plugin, ext));
 	}
 
 	private Path resolveVendorPluginFile(String appId, Class<? extends Plugin> plugin, String ext) {
-		return resolveVendorDir(appId).resolve(resolveFile(plugin, ext));
+		return resolveDir(appId, Scope.VENDOR).resolve(resolveFile(plugin, ext));
 	}
 
 	private Path resolveFile(Class<? extends Plugin> plugin, String ext) {

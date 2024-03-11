@@ -18,12 +18,28 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package com.sshtools.bootlace.platform;
+package com.sshtools.bootlace.api;
 
-import java.net.URI;
-import java.util.Optional;
-
-import com.sshtools.bootlace.api.Repository;
-
-public record RepositoryDef(Class<? extends Repository> type, String id, String name, URI root, Optional<Boolean> releases, Optional<Boolean> snapshots, Optional<String> pattern) {
+/**
+ * Determines if or how a {@link Plugin} in a particular layer may access other
+ * layers by their ID through {@link PluginContext#layer(String)}.
+ * <p>
+ * Note, when a {@link Layer} is prevent access bv this flag, classes and parent
+ * in parents layers may still be accessed, but it will not be possible to
+ * access the {@link Layer} object to obtain further information or layers.
+ */
+public enum Access {
+	/**
+	 * The layer may be accessed from anywhere by it's <strong>unique</strong> ID.
+	 */
+	PUBLIC,
+	/**
+	 * The layer be accessed if it is a direct parent of another.
+	 */
+	PROTECTED,
+	/**
+	 * The layer may not be accessed at all by anything other than other plugins in
+	 * the same layer.
+	 */
+	PRIVATE
 }

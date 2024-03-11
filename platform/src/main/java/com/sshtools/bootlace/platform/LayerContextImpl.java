@@ -1,3 +1,23 @@
+/**
+ * Copyright © 2023 JAdaptive Limited (support@jadaptive.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the “Software”), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies
+ * or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package com.sshtools.bootlace.platform;
 
 import java.util.Collections;
@@ -31,22 +51,14 @@ public final class LayerContextImpl implements LayerContext {
 	}
 	
 	private final static Map<String, ModuleLayer> layers = new ConcurrentHashMap<>();
-	private final static Map<String, ModuleLayer> globals = new ConcurrentHashMap<>();
 	private final static Map<ModuleLayer, Layer> layerDefs = new ConcurrentHashMap<>();
 	private final static Map<ModuleLayer, ClassLoader> loaders = new ConcurrentHashMap<>();
-
-	@Override
-	public Iterable<ModuleLayer> globalLayers() {
-		return globals.values();
-	}
 
 	static void register(ModuleLayer layer, Layer layerDef, ClassLoader loader) {
 		Provider.LOG.info("Registering layer for context ''{0}''", layerDef.id());
 
 		loaders.put(layer, loader);
 		layers.put(layerDef.id(), layer);
-		if(layerDef.global())
-			globals.put(layerDef.id(), layer);
 		layerDefs.put(layer, layerDef);
 		
 		Provider.LOG.info("Registered layer for context ''{0}''", layerDef.id());
@@ -84,7 +96,6 @@ public final class LayerContextImpl implements LayerContext {
 		layerDefs.remove(moduleLayer);;
 		loaders.remove(moduleLayer);
 		layers.remove(id);
-		globals.remove(id);
 	}
 
 	@Override

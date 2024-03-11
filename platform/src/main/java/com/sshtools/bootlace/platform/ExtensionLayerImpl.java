@@ -1,3 +1,23 @@
+/**
+ * Copyright © 2023 JAdaptive Limited (support@jadaptive.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the “Software”), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies
+ * or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
@@ -28,6 +48,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import com.sshtools.bootlace.api.BootContext;
+import com.sshtools.bootlace.api.Exceptions.NotALayer;
+import com.sshtools.bootlace.api.ExtensionLayer;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
@@ -37,10 +59,8 @@ import com.sshtools.jini.INI;
 /**
  * A Container layer that watches a particular directory to load further layers
  * from.
- * <p>
- * When a
  */
-public final class DynamicLayer extends AbstractChildLayer {
+public final class ExtensionLayerImpl extends AbstractChildLayer implements ExtensionLayer {
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
 
 	private final static class DefaultQueue {
@@ -136,22 +156,22 @@ public final class DynamicLayer extends AbstractChildLayer {
 			this.fallbackDirectory = fallbackDirectory;
 			return this;
 		}
-
-		public DynamicLayer build() {
-			return new DynamicLayer(this);
+		
+		public ExtensionLayerImpl build() {
+			return new ExtensionLayerImpl(this);
 		}
 	}
 
 	private final Path directory;
 	private final Thread watchThread;
-	private final Map<String, AbstractChildLayer> loadedLayers = new ConcurrentHashMap<>();
+	private final Map<String, AbstractChildLayer> extensions = new ConcurrentHashMap<>();
 	private final Set<String> allowParents;
 	private final Set<String> denyParents;
 	private final Optional<Path> fallbackDirectory;
 
 	private ScheduledFuture<?> changedTask;
 
-	private DynamicLayer(Builder builder) {
+	private ExtensionLayerImpl(Builder builder) {
 		super(builder);
 		fallbackDirectory = builder.fallbackDirectory;
 		allowParents = Collections.unmodifiableSet(new HashSet<>(builder.allowParents));
@@ -194,7 +214,8 @@ public final class DynamicLayer extends AbstractChildLayer {
 		}
 
 	}
-	
+
+	@Override
 	public Path path() {
 		return directory;
 	}
@@ -236,8 +257,7 @@ public final class DynamicLayer extends AbstractChildLayer {
 
 	@Override
 	public String toString() {
-		return "DynamicLayer [id()=" + id() + ", name()=" + name() + ", parents()=" + parents() + ", global()="
-				+ global() + ", appRepositories()=" + appRepositories() + ", localRepositories()=" + localRepositories()
+		return "DynamicLayer [id()=" + id() + ", name()=" + name() + ", parents()=" + parents() + ", appRepositories()=" + appRepositories() + ", localRepositories()=" + localRepositories()
 				+ ", remoteRepositories()=" + remoteRepositories() + ", monitor()=" + monitor() + ", directory="
 				+ directory + ", allowParents=" + allowParents + ", denyParents=" + denyParents + "]";
 	}
@@ -314,43 +334,71 @@ public final class DynamicLayer extends AbstractChildLayer {
 			checkForLoadableLayers();
 			checkForDeletedLayers();
 		} catch (RuntimeException e) {
-			LOG.debug("Failed to refresh dynamic layers.", e);
+			LOG.warning("Failed to refresh dynamic layers.", e);
 		} catch (IOException e) {
-			LOG.debug("Failed to refresh dynamic layers.", e);
+			LOG.warning("Failed to refresh dynamic layers.", e);
 			throw new UncheckedIOException(e);
 		}
 	}
 
 	private void checkForDeletedLayers() throws IOException {
 		var removed = new HashSet<String>();
-		loadedLayers.forEach((id, layer) -> {
+		extensions.forEach((id, layer) -> {
 
 			var dir = directory.resolve(id);
 			if (!Files.exists(dir)) {
 				removed.add(id);
-				var appLayer = (RootLayerImpl) appLayer()
+				var appLayer = (RootLayerImpl) rootLayer()
 						.orElseThrow(() -> new IllegalStateException("Dynamic layer not attached to app layer."));
-				appLayer.beforeClose(layer);
-				appLayer.close(layer);
+				try {
+					appLayer.beforeClose(layer);
+				}
+				finally {
+					try {
+						appLayer.close(layer);
+					}
+					finally {
+						appLayer.removeLayer(id);
+						extensions.remove(id);
+						layer.rootLayer(null);
+					}
+				}
 			}
 		});
 		for (var layer : removed) {
-			loadedLayers.remove(layer);
+			extensions.remove(layer);
 		}
 	}
 
 	private void checkForLoadableLayers() throws IOException {
 		try (var stream = Files.newDirectoryStream(directory,
-				(f) -> Files.isDirectory(f) && !f.getFileName().toString().endsWith(".backup"))) {
+				(f) -> Files.isDirectory(f) && 
+				!f.getFileName().toString().endsWith(".backup") && 
+				!f.getFileName().toString().endsWith(".tmp"))) {
 			for (var dir : stream) {
+				Descriptor descriptor = null;
 				try (var dirStream = Files.newDirectoryStream(dir)) {
 					for (var jar : dirStream) {
+						
+						if(LOG.debug())
+							LOG.debug("Checking Jar {0}", jar);
+						
 						try {
-							maybeLoadLayer(dir, new Descriptor.Builder().fromArtifact(jar).build());
-						} catch (NoSuchFileException nsfe) {
+							var nextDescriptor = new Descriptor.Builder().fromArtifact(jar).build();
+							if(descriptor == null) {
+								descriptor = nextDescriptor;
+							}
+						} catch (NoSuchFileException | NotALayer nsfe) {
 							// No descriptor
 						}
 					}
+				}
+				
+				if(descriptor == null) {
+					LOG.warning("No loadable layers in extenssion directory {0}", dir);
+				}
+				else {					
+					maybeLoadLayer(dir, descriptor);
 				}
 			}
 		}
@@ -381,22 +429,47 @@ public final class DynamicLayer extends AbstractChildLayer {
 			});
 		}
 
-		if (!loadedLayers.containsKey(id)) {
+		if (!extensions.containsKey(id)) {
 
-			var layer = new PluginLayerImpl.Builder(id).fromDescriptor(descriptor).withParents(id())
-					.withJarArtifactsDirectory(dir).build();
+			var layer = new PluginLayerImpl.Builder(id).
+					fromDescriptor(descriptor).
+					withParents(id()).
+					withJarArtifactsDirectory(dir).
+					build();
 
-			loadedLayers.put(id, layer);
-
-			var appLayer = (RootLayerImpl) appLayer()
+			var appLayer = (RootLayerImpl) rootLayer()
 					.orElseThrow(() -> new IllegalStateException("Dynamic layer not attached to app layer."));
-			appLayer.open(layer);
-			appLayer.afterOpen(layer);
+			
+				
+			try {
+				extensions.put(id, layer);
+				layer.rootLayer(appLayer);
+				appLayer.addLayer(id, layer);
+				appLayer.open(layer);
+				appLayer.afterOpen(layer);
+			}
+			catch(Exception e) {
+				try {
+					appLayer.close(layer);
+				}
+				catch(Exception ex) {
+				}
+				finally {
+					try {
+						layer.rootLayer(null);
+					}
+					finally {
+						appLayer.removeLayer(id);
+						extensions.remove(id);
+					}
+				}
+				throw e;
+			}
 		}
 	}
 
 	private static Path defaultPluginsRoot() {
-		var prop = System.getProperty("bootlace.plugins");
+		var prop = System.getProperty("bootlace.extensions");
 		if (prop != null) {
 			Paths.get(prop);
 		}
@@ -405,23 +478,19 @@ public final class DynamicLayer extends AbstractChildLayer {
 		 * environment, so use a 'tmp' directory
 		 */
 		if (BootContext.isDeveloper()) {
-			return Paths.get(System.getProperty("bootlace.dev.plugins", "plugins"));
+			return Paths.get(System.getProperty("bootlace.dev.extensions", "extensions"));
 		}
 		/*
 		 * Is this a system installed app? If there is 'plugins' directory, and we can
 		 * write to it, that's our local plugins. If not, then use a hidden directory in
 		 * the users home
 		 */
-		var plugins = Paths.get("plugins");
+		var plugins = Paths.get("extensions");
 		if (Files.exists(plugins) && Files.isWritable(plugins)) {
 			return plugins;
 		} else {
-			return Paths.get(System.getProperty("user.home")).resolve(".bootlace").resolve("plugins");
+			return Paths.get(System.getProperty("user.home")).resolve(".bootlace").resolve("extensions");
 		}
-	}
-
-	public Path plugins() {
-		return directory;
 	}
 
 }

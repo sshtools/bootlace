@@ -1,3 +1,23 @@
+/**
+ * Copyright © 2023 JAdaptive Limited (support@jadaptive.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the “Software”), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies
+ * or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
@@ -18,6 +38,7 @@ import java.util.Set;
 
 import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.GAV;
+import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.LayerArtifacts;
 import com.sshtools.bootlace.api.PluginLayer;
 import com.sshtools.bootlace.api.PluginRef;
@@ -51,7 +72,8 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 		public PluginLayerImpl.Builder withJarArtifacts(Path... paths) {
 			Arrays.asList(paths).forEach((path) -> {
 				try(var in = Files.newInputStream(path)) {
-					withArtifactJar(in);
+					var props = getMavenPropertiesForArtifact(in);
+					withArtifactRefs(refFromProperties(props).withPath(path));
 				} catch (IOException ioe) {
 					throw new UncheckedIOException(ioe);
 				}	
@@ -88,7 +110,7 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 				catch(IOException ioe) {
 					throw new UncheckedIOException(ioe);
 				}
-			}, ze -> ze.getName().matches(".*META-IF/maven/[^/]+/[^/]+/pom.properties")).orElseThrow(() -> new IllegalArgumentException("Artifact does not appear to be a Maven artifact, there is no Maven meta-data."));
+			}, ze -> ze.getName().matches(".*META-INF/maven/[^/]+/[^/]+/pom\\.properties")).orElseThrow(() -> new IllegalArgumentException("Artifact does not appear to be a Maven artifact, there is no Maven meta-data."));
 		}
 
 		public PluginLayerImpl.Builder withArtifactRefs(Collection<ArtifactRef> ref) {
@@ -134,6 +156,7 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 	
 	final List<PluginRef> pluginRefs = new ArrayList<>();
 	Optional<LayerArtifacts> layerArtifacts = Optional.empty();
+	Set<Layer> publicLayers = new LinkedHashSet<>(); 
 
 	PluginLayerImpl(PluginLayerImpl.Builder layerBuilder) {
 		super(layerBuilder);
@@ -157,7 +180,7 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 
 	@Override
 	public String toString() {
-		return "PluginLayer [id()=" + id() + ", name()=" + name() + ", global()=" + global() + ", parents()="
+		return "PluginLayer [id()=" + id() + ", name()=" + name() + ", parents()="
 				+ parents() + ", appRepositories()=" + appRepositories() + ", localRepositories()="
 				+ localRepositories() + ", remoteRepositories()=" + remoteRepositories() + ", artifacts=" + artifacts + "]";
 	}

@@ -1,3 +1,23 @@
+/**
+ * Copyright © 2023 JAdaptive Limited (support@jadaptive.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the “Software”), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies
+ * or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package com.sshtools.bootlace.platform;
 
 import java.text.MessageFormat;
@@ -9,11 +29,11 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.Function;
 
+import com.sshtools.bootlace.api.Access;
 import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.AppRepository.AppRepositoryBuilder;
 import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.GAV;
-import com.sshtools.bootlace.api.LayerContext;
 import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.LocalRepository.LocalRepositoryBuilder;
 import com.sshtools.bootlace.api.Logs;
@@ -33,15 +53,23 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 	static abstract class AbstractChildLayerBuilder<B extends AbstractChildLayer.AbstractChildLayerBuilder<B>>
 			extends AbstractLayerBuilder<B> {
 		protected final Set<String> parents = new LinkedHashSet<>();
+		protected Optional<Access> access = Optional.empty();
 
 		public AbstractChildLayerBuilder(String id) {
 			super(id);
+		}
+
+		@SuppressWarnings("unchecked")
+		public final B withAccess(Access access) {
+			this.access = Optional.of(access);
+			return (B) this;
 		}
 
 		@Override
 		protected B fromComponentSection(Section section) {
 			withParents(section.getAllOr("parent").orElse(new String[0]));
 			withParents(section.getAllOr("parents").orElse(new String[0]));
+			section.getOr("access").map(Access::valueOf).ifPresent(this::withAccess);
 			return super.fromComponentSection(section);
 		}
 
@@ -58,21 +86,37 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 	}
 
 	final Set<String> parents;
+	final Access access;
 
-	private Optional<RootLayer> appLayer = Optional.empty();
+	private Optional<RootLayer> rootLayer = Optional.empty();
 
 	AbstractChildLayer(AbstractChildLayer.AbstractChildLayerBuilder<?> layerBuilder) {
 		super(layerBuilder);
+		this.access = layerBuilder.access.orElse(Access.PROTECTED);
 		parents = new LinkedHashSet<>(layerBuilder.parents);
 	}
 
 	@Override
-	public final Optional<RootLayer> appLayer() {
-		return appLayer;
+	public Access access() {
+		return access;
 	}
 
-	final void appLayer(RootLayerImpl appLayer) {
-		this.appLayer = Optional.of(appLayer);
+	@Override
+	public final Optional<RootLayer> rootLayer() {
+		return rootLayer;
+	}
+
+	final void rootLayer(RootLayerImpl rootLayer) {
+		if(rootLayer == null && this.rootLayer.isPresent()) {
+			((RootLayerImpl)this.rootLayer.get()).publicLayers.remove(id());
+			this.rootLayer = null;
+		}
+		else {
+			this.rootLayer = Optional.of(rootLayer);
+			if(access().equals(Access.PUBLIC) && rootLayer.publicLayers.put(id(), this) != null) {
+				throw new IllegalStateException(MessageFormat.format("More than one PUBLIC layer with the ID {0}", id()));
+			}
+		}
 	}
 
 	@Override
@@ -80,19 +124,17 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 		return parents;
 	}
 
-	@Override
 	public void onOpened() {
 	}
 
-	@Override
 	public void onAfterOpen() {
 	}
 
 	@Override
 	public String toString() {
 		return "AbstractChildLayer [id()=" + id() + ", name()=" + name() + ", appRepositories()=" + appRepositories()
-				+ ", localRepositories()=" + localRepositories() + ", monitor()=" + monitor() + ", global()=" + global()
-				+ ", remoteRepositories()=" + remoteRepositories() + ", parents=" + parents + ", appLayer=" + appLayer
+				+ ", localRepositories()=" + localRepositories() + ", monitor()=" + monitor() 
+				+ ", remoteRepositories()=" + remoteRepositories() + ", parents=" + parents + ", appLayer=" + rootLayer
 				+ "]";
 	}
 
@@ -116,13 +158,10 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			return monitor();
 		}
 		else {
-			if(appLayer.isPresent()) {
-				var app = appLayer.get();
+			if(rootLayer.isPresent()) {
+				var app = rootLayer.get();
 				for (var parent : parents) {
-					var moduleLayer = (AbstractChildLayer) ((RootLayerImpl) app).layers.get(parent);
-					if (moduleLayer == null)
-						throw new IllegalStateException(
-								MessageFormat.format("Parent layer ''{0}'' does not exist.", parent));
+					var moduleLayer = (AbstractChildLayer) ((RootLayerImpl) app).getLayer(parent);
 					var mon = moduleLayer.resolveMonitor();
 					if(mon.isPresent())
 						return mon;
@@ -158,14 +197,10 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 					.ifPresent(repo -> l.add(repo));
 		}
 			
-		appLayer.ifPresent(app -> {
+		rootLayer.ifPresent(app -> {
 			var rootLayer = (RootLayerImpl) app;
 			for (var parent : parents) {
-				var layer = rootLayer.layers.get(parent);
-				if (layer == null)
-					throw new IllegalStateException(
-							MessageFormat.format("Parent layer ''{0}'' does not exist.", parent));
-
+				var layer = rootLayer.getLayer(parent);
 				if (LOG.debug()) {
 					LOG.debug("Now resolving repository for {0} using parent {1} module loader", id(),
 							parent);
@@ -197,7 +232,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			}
  			
  			if(id.equals(BootstrapRepository.ID)) {
- 				return (Optional<REPO>) ((RootLayerImpl)appLayer.get()).bootstrapRepository();
+ 				return (Optional<REPO>) ((RootLayerImpl)rootLayer.get()).bootstrapRepository();
  			}
  			else if(id.equals(LocalRepository.ID)) {
  				return (Optional<REPO>) Optional.of(LocalRepositoryImpl.localRepository());
@@ -227,19 +262,6 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			}
  			
 			return Optional.of(configureBuilder(def, bldr));
-		}
-		
-		var layerCtx = LayerContext.get(builderClass);
-		for(var lyr : layerCtx.globalLayers()) {
-			
-			LOG.debug("Trying layer ''{0}''", lyr); 
-			bldrOr = ServiceLoader.load(lyr, builderClass).findFirst();
-			if(bldrOr.isEmpty()) {
-				LOG.debug("Still NO repository builder of type ''{0}'' of class ''{1}'' in service layers, giving up", id, builderClass.getName());
-			}
-			else {
-				return Optional.of(configureBuilder(def, bldrOr.get()));
-			}
 		}
 		
 		return Optional.empty();

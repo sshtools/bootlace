@@ -1,3 +1,23 @@
+/**
+ * Copyright © 2023 JAdaptive Limited (support@jadaptive.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the “Software”), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies
+ * or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package com.sshtools.bootlace.platform;
 
 import static java.lang.String.format;
@@ -13,7 +33,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,12 +46,15 @@ import java.util.function.Function;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 
+import com.sshtools.bootlace.api.Access;
+import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.BootContext;
 import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.Collect;
 import com.sshtools.bootlace.api.Exceptions;
 import com.sshtools.bootlace.api.Http;
 import com.sshtools.bootlace.api.Http.HttpClientFactory;
+import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.LayerContext;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
@@ -62,11 +85,32 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		private final ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects;
 		private final Set<ModuleLayer> parents;
 		private final List<AutoCloseable> closeable = new ArrayList<>();
+		private final PluginLayerImpl layer;
 
-		private ChildPluginContext(ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects,
+		private ChildPluginContext(PluginLayerImpl layer, ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects,
 				Set<ModuleLayer> parents) {
+			this.layer = layer;
 			this.pluginObjects = pluginObjects;
 			this.parents = parents;
+			
+		}
+
+		@Override
+		public Layer layer() {
+			return layer;
+		}
+
+		@Override
+		public boolean hasPlugin(String className) {
+			return pluginObjects.keySet().stream().map(Class::getName).toList().contains(className);
+		}
+
+		@Override
+		public Optional<Layer> layer(String id) {
+			var global = ((RootLayerImpl)layer.rootLayer().get()).publicLayers.get(id);
+			if(global != null) 
+				return Optional.of(global);
+			return Optional.ofNullable(searchLayersForId(layer.rootLayer().orElse(null), layer, id));
 		}
 
 		@Override
@@ -97,6 +141,27 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		@Override
 		public RootContext root() {
 			return root;
+		}
+
+		private Layer searchLayersForId(RootLayer rootLayer, Layer layer, String id) {
+			if(layer.id().equals(id)) {
+				return layer;
+			}
+			if(layer instanceof ChildLayer cl) {
+				for(var parent : cl.parents()) {
+					var parentLayer = ((RootLayerImpl)rootLayer).layers.get(parent);
+					if(parentLayer != null) {
+						if(parentLayer.access() == Access.PRIVATE) {
+							/* Skip private parent.*/
+							continue;
+						}
+						var l = searchLayersForId(rootLayer, parentLayer, id);
+						if(l != null)
+							return l;
+					}
+				}
+			}
+			return null;
 		}
 
 		private <P extends Plugin> Optional<P> searchParents(Collection<ModuleLayer> parents, Class<P> plugin) {
@@ -162,6 +227,11 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			return RootLayerImpl.this.globalResource(path);
 		}
 
+		@Override
+		public boolean hasPlugin(String className) {
+			return pluginObjects.keySet().stream().map(Class::getName).toList().contains(className);
+		}
+
 	}
 
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
@@ -172,13 +242,16 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	private final HttpClientFactory httpClientFactory;
 	private final String userAgent;
 	private final Optional<BootstrapRepository> bootstrapRepository;
-	protected final Map<String, ChildLayer> layers;
+	protected final Map<String, ChildLayer> publicLayers = new ConcurrentHashMap<>();
 	private Map<Class<? extends Plugin>, Plugin> pluginObjects = new ConcurrentHashMap<>();
-	private Map<String, ClassLoader> globalResourceLoaders = new HashMap<>();
+	private Map<String, ClassLoader> globalResourceLoaders = new ConcurrentHashMap<>();
+	private final Map<String, ChildLayer> layers;
+	private final Map<String, ChildLayer> tempLayers = new LinkedHashMap<>();
 
 	protected final Map<String, ModuleLayer> moduleLayers = new ConcurrentHashMap<>();
 
-	private boolean useDeprecatedLoading;
+	private boolean initialising;
+
 	
 	RootLayerImpl(RootLayerBuilder builder) {
 		super(builder);
@@ -190,19 +263,27 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		this.userAgent = builder.userAgent.orElse("Bootlace");
 		this.httpClientFactory = builder.httpClientFactory.orElseGet(Http::defaultClientFactory);
 
-		layers = builder.layers.stream().collect(Collect.toLinkedMap(ChildLayer::id, Function.identity()));
+		layers =  builder.layers.stream().collect(Collect.toLinkedMap(ChildLayer::id, Function.identity()));
 
-		layers.forEach((k, v) -> ((AbstractChildLayer) v).appLayer(this));
+		layers.forEach((k, v) -> ((AbstractChildLayer) v).rootLayer(this));
 		LOG.debug("Attached root layer to child layers");
 
 		sem.tryAcquire();
 		app = builder.appContext;
 		root = new RootContextImpl();
-
-		layers.values().forEach(l -> {
-			open(l);
-			afterOpen(l);
-		});
+		
+		initialising = true;
+		try {
+			layers.values().forEach(l -> {
+				open(l);
+				afterOpen(l);
+			});
+		}
+		finally {
+			initialising = true;
+			layers.putAll(tempLayers);
+			tempLayers.clear();;
+		}
 		
 		pluginObjects.forEach((k,v) -> {
 			/* TODO move this to plugin loading .. so they are unregistered on unload */
@@ -230,6 +311,11 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	}
 	
 	@Override
+	public Access access() {
+		return Access.PUBLIC;
+	}
+
+	@Override
 	public Optional<URL> globalResource(String path) {
 		var fullPath ="npm2mvn/" + path;
 		for(var en : globalResourceLoaders.entrySet()) {
@@ -246,15 +332,12 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 	@Override
 	public ChildLayer getLayer(String id) {
-		var layer = layers.get(id);
-		if (layer == null)
-			throw new IllegalArgumentException(format("No layer with ID ''{0}''", id));
-		return layer;
+		return getLayerOr(id).orElseThrow(() -> new IllegalArgumentException(format("No layer with ID ''{0}''", id)));
 	}
 
 	@Override
 	public String toString() {
-		return "AppLayer [id()=" + id() + ", name()=" + name() + ", global()=" + global() + ", appRepositories()="
+		return "AppLayer [id()=" + id() + ", name()=" + name() + ", appRepositories()="
 				+ appRepositories() + ", localRepositories()=" + localRepositories() + ", remoteRepositories()="
 				+ remoteRepositories() + ", monitor()=" + monitor() + ", app=" + app + ", userAgent=" + userAgent + "]";
 	}
@@ -268,6 +351,22 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		} finally {
 			sem.release();
 		}
+	}
+	
+	void removeLayer(String id) {
+		var map = initialising ? tempLayers : layers;
+		map.remove(id);
+	}
+	
+	void addLayer(String id, ChildLayer layer) {
+		var map = initialising ? tempLayers : layers;
+		if(map.put(id, layer) != null) {
+			throw new IllegalArgumentException(MessageFormat.format("Layer ''{0}'' is already known.", id));
+		}
+	}
+	
+	Optional<ChildLayer> getLayerOr(String id) {
+		return Optional.ofNullable(layers.get(id));
 	}
 
 	void afterOpen(ChildLayer child) {
@@ -294,7 +393,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			}
 		} finally {
 			try {
-				child.onAfterOpen();
+				((AbstractLayer)child).onAfterOpen();
 			} finally {
 				root.listeners.forEach(l -> l.layerOpened(child));
 			}
@@ -366,7 +465,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 //	
 //	
 
-		LOG.info("Opening child layer {0}", layerDef.id());
+		LOG.info("Opening child layer {0}. {1}", layerDef.id());
 		LOG.debug(layerDef);
 
 		var id = layerDef.id();			
@@ -380,6 +479,9 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 			//
 			var pluginLayerDef = (PluginLayerImpl) layerDef;
+			
+			LOG.info("Aritfacts: {0}}", String.join(", ", pluginLayerDef.artifacts().stream().map(ArtifactRef::toString).toList()));
+			
 			var layerArtifacts = new LayerArtifactsImpl(pluginLayerDef, httpClientFactory, root);
 			pluginLayerDef.layerArtifacts = Optional.of(layerArtifacts);
 			var paths = layerArtifacts.paths(); 
@@ -417,7 +519,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 			
 		LOG.info("Opened child layer {0}", layerDef.id());
-		layerDef.onOpened();
+		((AbstractLayer)layerDef).onOpened();
 		monitor().ifPresent(mon -> mon.loadedLayer(layerDef));
 	}
 
@@ -425,12 +527,6 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			Set<ModuleLayer> parents) {
 		ModuleLayer layer;
 		ClassLoader childLoader;
-		if(useDeprecatedLoading) {
-			childLoader = new ChildLayerLoader(layerDef, ClassLoader.getSystemClassLoader());
-			layer = createModuleLayer(layerDef.id(), parents, paths, childLoader);
-			((ChildLayerLoader)childLoader).module(layer);
-		}
-		else {				
 			layer = createModuleLayer(layerDef.id(), parents, paths, ClassLoader.getSystemClassLoader());
 			var modules = layer.modules();
 			if(modules.isEmpty()) {
@@ -439,7 +535,6 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			else {
 				childLoader = layer.findLoader(modules.iterator().next().getName());
 			}
-		}	
 		moduleLayers.put(layerDef.id(), layer);
 		LayerContextImpl.register(layer, layerDef, childLoader);
 		
@@ -481,7 +576,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			 * while they are being instantiated (e.g. for accessing plugin instances
 			 * statically when defining member variables)
 			 */
-			var context = new ChildPluginContext(pluginObjects, parents);
+			var context = new ChildPluginContext(pluginLayer, pluginObjects, parents);
 			PluginContextProviderImpl.current.set(context);
 			try {
 			
@@ -531,12 +626,20 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	}
 
 	@Override
-	public Optional<RootLayer> appLayer() {
+	public Optional<RootLayer> rootLayer() {
 		return Optional.of(this);
 	}
 
 	@Override
 	protected Set<String> parents() {
 		return Collections.emptySet();
+	}
+
+	@Override
+	protected void onAfterOpen() {
+	}
+
+	@Override
+	protected void onOpened() {
 	}
 }

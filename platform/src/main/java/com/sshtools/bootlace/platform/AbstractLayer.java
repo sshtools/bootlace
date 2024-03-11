@@ -1,3 +1,23 @@
+/**
+ * Copyright © 2023 JAdaptive Limited (support@jadaptive.com)
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this
+ * software and associated documentation files (the “Software”), to deal in the Software
+ * without restriction, including without limitation the rights to use, copy, modify,
+ * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies
+ * or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+ * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+ * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package com.sshtools.bootlace.platform;
 
 import java.io.IOException;
@@ -43,7 +63,6 @@ abstract class AbstractLayer implements Layer {
 
 		protected String id;
 		protected Optional<String> name = Optional.empty();
-		protected boolean global;
 
 		protected AbstractLayerBuilder(String id) {
 			if(id == null || id.length() == 0)
@@ -187,16 +206,6 @@ abstract class AbstractLayer implements Layer {
 			return withName(Optional.of(name));
 		}
 
-		@SuppressWarnings("unchecked")
-		public final L withGlobal(boolean global) {
-			this.global = global;
-			return (L) this;
-		}
-
-		public final L withGlobal() {
-			return withGlobal(true);
-		}
-
 		public final L withoutMonitor() {
 			return withMonitor(ResolutionMonitor.empty());
 		}
@@ -228,7 +237,6 @@ abstract class AbstractLayer implements Layer {
 			addRemoteRepositories(section.getAllOr("remote-repository").orElse(new String[0]));
 			addRemoteRepositories(section.getAllOr("remote-repositories").orElse(new String[0]));
 			withName(section.getOr("name"));
-			withGlobal(section.getBooleanOr("global",false));
 			return (L) this;
 		}
 
@@ -250,7 +258,7 @@ abstract class AbstractLayer implements Layer {
 
 		@Override
 		public String toString() {
-			return "AbstractLayerBuilder [id=" + id + ", name=" + name + ", global=" + global + ", appRepositories="
+			return "AbstractLayerBuilder [id=" + id + ", name=" + name + ", appRepositories="
 					+ appRepositories + ", remoteRepositories=" + remoteRepositories + ", monitor=" + monitor
 					+ ", localRepositories=" + localRepositories + "]";
 		}
@@ -265,7 +273,6 @@ abstract class AbstractLayer implements Layer {
 	private final String id;
 	private final Optional<String> name;
 	
-	boolean global;
 
 	protected AbstractLayer(AbstractLayerBuilder<?> builder) {
 		this.id = builder.id;
@@ -276,7 +283,6 @@ abstract class AbstractLayer implements Layer {
 		this.repositoryDefs = new HashMap<>();
 		builder.repositoryDefs.stream().forEach(v -> repositoryDefs.put(v.id(), v));
 		this.monitor = builder.monitor;
-		this.global = builder.global;
 		
 		if(LOG.debug()) {
 			if(!repositoryDefs.isEmpty()) {
@@ -314,25 +320,24 @@ abstract class AbstractLayer implements Layer {
 	}
 
 	@Override
-	public final boolean global() {
-		return global;
-	}
-
-	@Override
 	public final Set<String> remoteRepositories() {
 		return remoteRepositories;
 	}
 
 	@Override
 	public String toString() {
-		return "AbstractLayer [id=" + id + ", name=" + name + ", global=" + global + ", appRepositories="
+			return "AbstractLayer [id=" + id + ", name=" + name + ", appRepositories="
 				+ appRepositories + ", localRepositories=" + localRepositories + ", monitor=" + monitor
 				+ ", remoteRepositories=" + remoteRepositories + "]";
 	}
+
+	protected abstract void onAfterOpen();
+
+	protected abstract void onOpened();
 	
 	protected abstract Set<String> parents();
 	
-	public abstract Optional<RootLayer> appLayer();
+	public abstract Optional<RootLayer> rootLayer();
 	
 	protected RepositoryDef findRepositoryDef(String id) {
 		var def = repositoryDefs.get(id);
@@ -340,8 +345,8 @@ abstract class AbstractLayer implements Layer {
 			LOG.debug("Looking for repository ''{0}'' in layer ''{1}''", id,  id());
 		}
 		if(def == null) {
-			if(appLayer().isPresent()) {
-				var app = ((RootLayerImpl)appLayer().get());
+			if(rootLayer().isPresent()) {
+				var app = ((RootLayerImpl)rootLayer().get());
 				if(!app.equals(this)) {
 					var parents = parents();
 					
@@ -350,7 +355,7 @@ abstract class AbstractLayer implements Layer {
 					}
 					
 					for(var parent : parents) {
-						var layer = app.layers.get(parent);
+						var layer = app.getLayerOr(parent).orElse(null);
 						if(layer != null) {
 							if(layer instanceof AbstractChildLayer acl) {
 								def = acl.findRepositoryDef(id);

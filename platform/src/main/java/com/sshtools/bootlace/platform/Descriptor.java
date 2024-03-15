@@ -100,10 +100,12 @@ public final class Descriptor {
 	private final List<Section> children;
 	private final Optional<Section> artifacts;
 	private final Optional<Section> repositories;
+	private final Optional<Section> meta;
 
 	private Descriptor(Builder bldr) {
 		component = bldr.ini.section("component");
 		artifacts = bldr.ini.sectionOr("artifacts");
+		meta = bldr.ini.sectionOr("meta");
 		id = component.get("id");
 		children = Arrays.asList(bldr.ini.sectionOr("layer").map(l -> l.allSections()).orElse(new Section[0]));
 		repositories = bldr.ini.sectionOr("repository");
@@ -123,6 +125,10 @@ public final class Descriptor {
 	
 	public Optional<Section> repositories() {
 		return repositories;
+	}
+	
+	public Optional<Section> meta() {
+		return meta;
 	}
 	
 	public Optional<Section> repository(String id) {

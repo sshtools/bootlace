@@ -50,6 +50,7 @@ import java.util.concurrent.TimeUnit;
 import com.sshtools.bootlace.api.BootContext;
 import com.sshtools.bootlace.api.Exceptions.NotALayer;
 import com.sshtools.bootlace.api.ExtensionLayer;
+import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
@@ -213,6 +214,11 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			throw new UncheckedIOException(e);
 		}
 
+	}
+	
+	@Override
+	public Collection<? extends Layer> extensions() { 
+		return extensions.values();
 	}
 
 	@Override

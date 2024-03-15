@@ -48,6 +48,8 @@ import com.sshtools.jini.INI.Section;
 public final class PluginLayerImpl extends AbstractChildLayer implements PluginLayer {
 	public final static class Builder extends AbstractChildLayerBuilder<PluginLayerImpl.Builder> {
 		private final Set<ArtifactRef> artifacts = new LinkedHashSet<>();
+		private Optional<String> icon = Optional.empty();
+		private Optional<String> description = Optional.empty();
 
 		public Builder(String id) {
 			super(id);
@@ -55,6 +57,15 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 
 		public PluginLayerImpl build() {
 			return new PluginLayerImpl(this);
+		}
+		
+		@Override
+		public PluginLayerImpl.Builder fromDescriptor(Descriptor descriptor) {
+			descriptor.meta().ifPresent(meta -> {
+				meta.getOr("description").ifPresent(this::withDescription);
+				meta.getOr("icon").ifPresent(this::withIcon);
+			});
+			return super.fromDescriptor(descriptor);
 		}
 
 		public PluginLayerImpl.Builder withJarArtifactsDirectory(Path dir) {
@@ -78,6 +89,16 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 					throw new UncheckedIOException(ioe);
 				}	
 			});
+			return this;
+		}
+		
+		public PluginLayerImpl.Builder withIcon(String icon) {
+			this.icon = Optional.of(icon);
+			return this;
+		}
+		
+		public PluginLayerImpl.Builder withDescription(String description) {
+			this.description = Optional.of(description);
 			return this;
 		}
 		
@@ -157,10 +178,23 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 	final List<PluginRef> pluginRefs = new ArrayList<>();
 	Optional<LayerArtifacts> layerArtifacts = Optional.empty();
 	Set<Layer> publicLayers = new LinkedHashSet<>(); 
+	private final Optional<String> icon, description;
 
 	PluginLayerImpl(PluginLayerImpl.Builder layerBuilder) {
 		super(layerBuilder);
 		artifacts = new LinkedHashSet<>(layerBuilder.artifacts);
+		icon = layerBuilder.icon;
+		description = layerBuilder.description;
+	}
+
+	@Override
+	public Optional<String> description() {
+		return description;
+	}
+
+	@Override
+	public Optional<String> icon() {
+		return icon;
 	}
 
 	@Override

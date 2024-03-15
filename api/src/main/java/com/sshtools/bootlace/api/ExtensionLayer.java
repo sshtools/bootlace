@@ -21,6 +21,8 @@
 package com.sshtools.bootlace.api;
 
 import java.nio.file.Path;
+import java.util.Collection;
+import java.util.Optional;
 
 /**
  * An extension layer is a container layer that consists of one or more further
@@ -48,4 +50,21 @@ public interface ExtensionLayer extends ChildLayer {
 	 * @return path of layer extensions
 	 */
 	Path path();
+
+	/**
+	 * Get the child extension layers.
+	 * 
+	 * @return layers
+	 */
+	Collection<? extends Layer> extensions();
+
+	/**
+	 * Get an extension layer given it's id.
+	 * 
+	 * @param id id
+	 * @return layer
+	 */
+	default Optional<? extends Layer> extension(String id) {
+		return extensions().stream().filter(l -> l.id().equals(id)).findFirst();
+	}
 }

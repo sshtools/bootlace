@@ -21,6 +21,7 @@
 package com.sshtools.bootlace.api;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public interface PluginLayer  extends Layer {
@@ -28,5 +29,9 @@ public interface PluginLayer  extends Layer {
 	Set<ArtifactRef> artifacts();
 	
 	List<PluginRef> pluginRefs();
+	
+	Optional<String> description();
+	
+	Optional<String> icon();
 
 }

@@ -56,7 +56,7 @@ import com.sshtools.bootlace.api.DirectedGraph.SCC;
  * @see Jenkins#getDependencyGraph()
  * @author Kohsuke Kawaguchi
  */
-public class DependencyGraph<M extends NodeModel> implements Comparator<M> {
+public class DependencyGraph<M extends NodeModel<M>> implements Comparator<M> {
 
 	private Map<M, List<DependencyGroup<M>>> forward = new HashMap<>();
 	private Map<M, List<DependencyGroup<M>>> backward = new HashMap<>();
@@ -72,13 +72,12 @@ public class DependencyGraph<M extends NodeModel> implements Comparator<M> {
 		this(Arrays.asList(nodes));
 	}
 	
-	@SuppressWarnings("unchecked")
 	public DependencyGraph(Collection<M> nodes) {
 		this.computationalData = new HashMap<>();
 		for (var node : nodes) {
 			node.dependencies(dep -> {
-				add(forward, (M)dep.getUpstream(), dep);
-				add(backward, (M)dep.getDownstream(), dep);		
+				add(forward, dep.getUpstream(), dep);
+				add(backward, dep.getDownstream(), dep);		
 			});
 		}
 
@@ -283,9 +282,9 @@ public class DependencyGraph<M extends NodeModel> implements Comparator<M> {
 		return Collections.unmodifiableMap(m);
 	}
 
-	private static final Comparator<DependencyGroup<? extends NodeModel>> NAME_COMPARATOR = new Comparator<>() {
+	private static final Comparator<DependencyGroup<? extends NodeModel<?>>> NAME_COMPARATOR = new Comparator<>() {
 		@Override
-		public int compare(DependencyGroup<? extends NodeModel> lhs, DependencyGroup<? extends NodeModel> rhs) {
+		public int compare(DependencyGroup<? extends NodeModel<?>> lhs, DependencyGroup<? extends NodeModel<?>> rhs) {
 			int cmp = lhs.getUpstream().name().compareTo(rhs.getUpstream().name());
 			return cmp != 0 ? cmp
 					: lhs.getDownstream().name().compareTo(rhs.getDownstream().name());

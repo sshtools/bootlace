@@ -24,9 +24,9 @@ import java.util.function.Consumer;
 
 import com.sshtools.bootlace.api.DependencyGraph.Dependency;
 
-public interface NodeModel {
+public interface NodeModel<M extends NodeModel<M>> {
 
 	String name();
 	
-	void dependencies(Consumer<Dependency> model);
+	void dependencies(Consumer<Dependency<M>> model);
 }

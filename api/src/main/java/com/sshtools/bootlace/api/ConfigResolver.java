@@ -35,6 +35,22 @@ import java.util.ServiceLoader;
  * locations.
  */
 public interface ConfigResolver {
+	
+
+	/**
+	 * Discover a {@link ConfigResolver} to use, using either a class loader or module layer.
+	 * 
+	 * @param layer layer to load from
+	 * @return configuration resolver
+	 */
+	public static ConfigResolver get(Class<?> clazz) {
+		if(clazz.getModule().getLayer() == null) {
+			return get(clazz.getClassLoader());
+		}
+		else {
+			return get(clazz.getModule().getLayer());
+		}
+	}
 
 	/**
 	 * Discover a {@link ConfigResolver} to use.
@@ -46,16 +62,34 @@ public interface ConfigResolver {
 		return ServiceLoader.load(layer, ConfigResolver.class).findFirst()
 				.orElseThrow(() -> new IllegalStateException("No configuration resolver available."));
 	}
+	
 
+	/**
+	 * Discover a {@link ConfigResolver} to use.
+	 * 
+	 * @param loader class loader to load from
+	 * @return configuration resolver
+	 */
+	public static ConfigResolver get(ClassLoader loader) {
+		return ServiceLoader.load(ConfigResolver.class, loader).findFirst()
+				.orElseThrow(() -> new IllegalStateException("No configuration resolver available."));
+	}
+	
+	
 	/**
 	 * The scope of the configuration
 	 */
 	public enum Scope {
 		/**
+		 * Resolves to a location suitable for reading configuration 
+		 * for the system.   
+		 */
+		SYSTEM, 
+		/**
 		 * Resolves to a location suitable for both reading and writing configuration 
 		 * for this applications plugins.   
 		 */
-		PLUGINS, 
+		USER, 
 		/**
 		 * Resolves to a location suitable for read only access to default configuration 
 		 * provided by the vendor of the application. 

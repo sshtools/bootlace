@@ -36,6 +36,8 @@ public class ConfigResolverImpl implements ConfigResolver {
 	@Override
 	public Path resolve(String appId, Scope scope, Class<? extends Plugin> plugin, String ext) {
 		switch(scope) {
+		case SYSTEM:
+			return resolveSystemPluginFile(appId, plugin, ext);
 		case VENDOR:
 			return resolveVendorPluginFile(appId, plugin, ext);
 		default:
@@ -47,10 +49,12 @@ public class ConfigResolverImpl implements ConfigResolver {
 	public Path resolveDir(String appId, Scope scope) {
 		try {
 			switch(scope) {
+			case SYSTEM:
+				return checkDir(resolveConfDir(appId).resolve("system"));
 			case VENDOR:
 				return checkDir(resolveConfDir(appId).resolve("vendor"));
 			default:
-				return checkDir(resolveConfDir(appId).resolve("extensions"));			
+				return checkDir(resolveConfDir(appId).resolve("user"));			
 			}
 		} catch (AccessDeniedException e) {
 			throw new UncheckedIOException(e);
@@ -58,11 +62,15 @@ public class ConfigResolverImpl implements ConfigResolver {
 	}
 
 	private Path resolvePluginFile(String appId, Class<? extends Plugin> plugin, String ext) {
-		return resolveDir(appId, Scope.PLUGINS).resolve(resolveFile(plugin, ext));
+		return resolveDir(appId, Scope.USER).resolve(resolveFile(plugin, ext));
 	}
 
 	private Path resolveVendorPluginFile(String appId, Class<? extends Plugin> plugin, String ext) {
 		return resolveDir(appId, Scope.VENDOR).resolve(resolveFile(plugin, ext));
+	}
+
+	private Path resolveSystemPluginFile(String appId, Class<? extends Plugin> plugin, String ext) {
+		return resolveDir(appId, Scope.SYSTEM).resolve(resolveFile(plugin, ext));
 	}
 
 	private Path resolveFile(Class<? extends Plugin> plugin, String ext) {

@@ -158,8 +158,8 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				processDescriptor(pluginLayerDef, descriptor, artifactFile);
 			}
 			catch(NotALayer nle) {
-				if(LOG.debug())
-					LOG.debug("Not a layer.", nle);
+				if(LOG.trace())
+					LOG.trace("Not a layer.", nle);
 			}
 
 		}

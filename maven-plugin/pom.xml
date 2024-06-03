@@ -57,7 +57,7 @@
 		</dependency>
 		<dependency>
 			<groupId>com.sshtools</groupId>
-			<artifactId>jini</artifactId>
+			<artifactId>jini-lib</artifactId>
 		</dependency>
 	</dependencies>
 	<build>

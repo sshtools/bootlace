@@ -340,9 +340,10 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			checkForLoadableLayers();
 			checkForDeletedLayers();
 		} catch (RuntimeException e) {
-			LOG.warning("Failed to refresh dynamic layers.", e);
+			e.printStackTrace();
+			LOG.error("Failed to refresh dynamic layers.", e);
 		} catch (IOException e) {
-			LOG.warning("Failed to refresh dynamic layers.", e);
+//			LOG.warning("Failed to refresh dynamic layers.", e);
 			throw new UncheckedIOException(e);
 		}
 	}

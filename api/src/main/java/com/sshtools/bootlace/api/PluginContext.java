@@ -25,6 +25,12 @@ import java.util.Optional;
 import java.util.ServiceLoader;
 
 public interface PluginContext extends Closeable {
+	
+	public record PluginHostInfo(String app, String version, String displayName) {
+		public PluginHostInfo(String app) {
+			this(app, "0.0.0", app);
+		}
+	}
 
 	public interface Provider {
 		PluginContext get();

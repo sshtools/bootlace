@@ -55,13 +55,13 @@ public final class LayerContextImpl implements LayerContext {
 	private final static Map<ModuleLayer, ClassLoader> loaders = new ConcurrentHashMap<>();
 
 	static void register(ModuleLayer layer, Layer layerDef, ClassLoader loader) {
-		Provider.LOG.info("Registering layer for context ''{0}''", layerDef.id());
+		Provider.LOG.info("Registering layer for context `{0}`", layerDef.id());
 
 		loaders.put(layer, loader);
 		layers.put(layerDef.id(), layer);
 		layerDefs.put(layer, layerDef);
 		
-		Provider.LOG.info("Registered layer for context ''{0}''", layerDef.id());
+		Provider.LOG.info("Registered layer for context `{0}`", layerDef.id());
 	}
 	
 	@Override

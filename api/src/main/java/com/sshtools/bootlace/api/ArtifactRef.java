@@ -41,7 +41,7 @@ public record ArtifactRef(GAV gav, Optional<Path> path) {
 	
 	public static ArtifactRef of(GAV gav, Path path) {
 		gav.versionOr().ifPresent(g -> { 
-			throw new IllegalArgumentException(MessageFormat.format("The GAV ''{0}'' has a local path of ''{1}'', so the GAV should not have a version number.", gav, path));	
+			throw new IllegalArgumentException(MessageFormat.format("The GAV `{0}` has a local path of `{1}`, so the GAV should not have a version number.", gav, path));	
 		});
 		return new ArtifactRef(gav, Optional.of(path));
 	}
@@ -52,6 +52,11 @@ public record ArtifactRef(GAV gav, Optional<Path> path) {
 
 	public boolean hasPath() {
 		return path.isPresent();
+	}
+
+	@Override
+	public String toString() {
+		return gav + "[" + path.map(Path::toString).orElse("<none>") + "]";
 	}
 
 }

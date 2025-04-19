@@ -21,11 +21,16 @@
 package com.sshtools.bootlace.platform;
 
 
+import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
 import com.sshtools.jini.INIReader;
 import com.sshtools.jini.INIReader.DuplicateAction;
 import com.sshtools.jini.INIReader.MultiValueMode;
 
 public class Bootlace {
+
+	public static RootLayerBuilder build(PluginHostInfo host) {
+		return new RootLayerBuilder().withPluginHostInfo(host);
+	}
 	
 	public static RootLayerBuilder build() {
 		return new RootLayerBuilder();

@@ -143,8 +143,13 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				}
 			}
 			
+			if(rootContext.hasArtifact(first.gav())) {
+				LOG.warning("Found artifact {0} that is already loaded in a higher layer, skipping", first.gav());
+				continue;
+			}
 			
 			var artifactFile = loadArtifact(first);
+			rootContext.addArtifact(first.gav());
 			finalArtifactsDone.add(first.withPath(artifactFile));
 			
 			try {
@@ -153,7 +158,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 					build();
 				
 	
-				LOG.info("Found contributed descriptor in {0}", artifactFile);
+				LOG.debug("Found contributed descriptor in {0}", artifactFile);
 				
 				processDescriptor(pluginLayerDef, descriptor, artifactFile);
 			}
@@ -168,7 +173,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		
 		
 		if(LOG.debug()) {
-			LOG.debug("Final list of artifacts for ''{0}'' now ''{1}''", pluginLayerDef.id(), String.join(", ", finalArtifactsDone.stream().map(ArtifactRef::toString).toList()));
+			LOG.debug("Final list of artifacts for `{0}` now `{1}`", pluginLayerDef.id(), String.join(", ", finalArtifactsDone.stream().map(ArtifactRef::toString).toList()));
 		}
 	}
 	
@@ -189,7 +194,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	private void addArtifactsIfNotDone(ArtifactRef ref) {
 		if(!artifactsDone.contains(ref)) {
 			if(LOG.debug()) {
-				LOG.debug("Queueing artifact ''{0}'''", ref);
+				LOG.debug("Queueing artifact `{0}`'", ref);
 			}
 			artifactsToDo.add(ref);
 		}
@@ -211,7 +216,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		pluginLayerDef.localRepositories.addAll(repos);
 		
 		if(LOG.debug()) {
-			LOG.debug("Local repositories for ''{0}'' now ''{1}''", descriptor.id(), String.join(", ", pluginLayerDef.localRepositories));
+			LOG.debug("Local repositories for `{0}` now `{1}`", descriptor.id(), String.join(", ", pluginLayerDef.localRepositories));
 		}
 		
 		repos = Stream.concat(
@@ -220,7 +225,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		pluginLayerDef.remoteRepositories.addAll(repos);
 		
 		if(LOG.debug()) {
-			LOG.debug("Remote repositories for ''{0}'' now ''{1}''", descriptor.id(), String.join(", ", pluginLayerDef.remoteRepositories));
+			LOG.debug("Remote repositories for `{0}` now `{1}`", descriptor.id(), String.join(", ", pluginLayerDef.remoteRepositories));
 		}
 		
 		
@@ -230,7 +235,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		pluginLayerDef.appRepositories.addAll(repos);
 		
 		if(LOG.debug()) {
-			LOG.debug("App repositories for ''{0}'' now ''{1}''", descriptor.id(), String.join(", ", pluginLayerDef.appRepositories));
+			LOG.debug("App repositories for `{0}` now `{1}`", descriptor.id(), String.join(", ", pluginLayerDef.appRepositories));
 		}
 		
 		pluginLayerDef.parents.addAll(Stream.concat(
@@ -238,7 +243,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				Arrays.asList(section.getAllOr("parents").orElse(new String[0])).stream()).toList());
 		
 		if(LOG.debug()) {
-			LOG.debug("Parents for ''{0}'' now ''{1}''", descriptor.id(), String.join(", ", pluginLayerDef.parents));
+			LOG.debug("Parents for `{0}` now `{1}`", descriptor.id(), String.join(", ", pluginLayerDef.parents));
 		}
 		
 		var arts = descriptor.artifacts();
@@ -246,13 +251,17 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 			art.values().forEach((k, v) -> {
 				if(k.equals("*")) {
 					if(LOG.debug()) {
-						LOG.debug("Adding all direct maven depednencies for ''{0}''", descriptor.id());
+						LOG.debug("Adding all direct maven dependencies for `{0}`", descriptor.id());
 					}
 					
 					pluginLayerDef.artifacts().forEach(defArt -> {
-						Artifact.find(defArt, descriptorPath).pom().dependencies().forEach(gav -> 
-							addArtifactsIfNotDone(ArtifactRef.of(gav))
-						);
+						Artifact.find(defArt, descriptorPath).ifPresentOrElse(aart -> { 
+							aart.pom().dependencies().forEach(gav -> 
+								addArtifactsIfNotDone(ArtifactRef.of(gav))
+							);
+						}, () -> {
+							throw new UnsupportedOperationException(defArt.gav().toString());
+						});
 					});
 				}
 				else if(v.length == 1) {
@@ -265,7 +274,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		});
 		
 		if(LOG.debug()) {
-			LOG.debug("Artifacts for ''{0}'' now ''{1}''", descriptor.id(), String.join(", ", artifactsToDo.stream().map(ArtifactRef::toString).toList()));
+			LOG.debug("Artifacts for `{0}` now `{1}`", descriptor.id(), String.join(", ", artifactsToDo.stream().map(ArtifactRef::toString).toList()));
 		}
 	}
 
@@ -279,7 +288,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		
 			LOG.info("Loading {0} @ {1}", gav, path);
 			if(!Files.exists(path)) {
-				throw new IOException(MessageFormat.format("Path to artifact ''{0}'' of ''{1}'' does not exist. Local artifact paths are only intended for developer purposes, and would usually point to the class output directory from your compiler, e.g. target/classes or bin. These must exist.", gav, path));
+				throw new IOException(MessageFormat.format("Path to artifact `{0}` of `{1}` does not exist. Local artifact paths are only intended for developer purposes, and would usually point to the class output directory from your compiler, e.g. target/classes or bin. These must exist.", gav, path));
 			}
 			monitor.ifPresent(m -> m.have(gav, path.toUri(), null));
 			return path;
@@ -299,7 +308,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				/* Check locals */
 				if(locals.isEmpty()) {
 					throw new IOException(MessageFormat.format("""
-							Artifact ''{0}'' was not found, as there was neither an 'app-repository', 
+							Artifact `{0}` was not found, as there was neither an 'app-repository', 
 							nor a 'localRepository' configured to be able to retrieve it. 
 							Check your layers.ini for this layer. 
 							""", gav));
@@ -315,7 +324,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 						var path = Paths.get(uri);
 						if (Files.exists(path)) {
 							found = true;
-							LOG.info("Found {0} @ {1}", gav, uri);
+							LOG.debug("Found {0} @ {1}", gav, uri);
 							monitor.ifPresent(m -> m.have(gav, path.toUri(), local));
 							return path;
 						}
@@ -324,7 +333,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				
 				
 				throw new IOException(MessageFormat.format("""
-						Artifact ''{0}'' was not found, and could not be found by searching {1}
+						Artifact `{0}` was not found, and could not be found by searching {1}
 						static local repositories. An 'app-repository' was not configured
 						either, so the artifact could not be downloaded from any remote
 						repositories if there are any. Check your layers.ini for this layer. 
@@ -341,7 +350,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 						if (Files.exists(path)) {
 							/* Have in app repository */
 							var uri = path.toUri();
-							LOG.info("Found {0} @ {1}", gav, uri);
+							LOG.debug("Found {0} @ {1}", gav, uri);
 							monitor.ifPresent(m -> m.have(gav, uri, appRepository));
 							return path;
 						} else {
@@ -355,7 +364,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	
 									path = Paths.get(uri);
 									if (Files.exists(path)) {
-										LOG.info("Found {0} @ {1}", gav, uri);
+										LOG.debug("Found {0} @ {1}", gav, uri);
 										found = true;
 										var uri2 = path.toUri();
 										monitor.ifPresent(m -> m.have(gav, uri2, local));
@@ -375,7 +384,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 				
 				
 				throw new IOException(MessageFormat.format("""
-						Artifact ''{0}'' was not found, and could not be found by searching {1}
+						Artifact `{0}` was not found, and could not be found by searching {1}
 						application repositories   
 						""", gav, appRepositories.size()));
 			}
@@ -388,8 +397,11 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 			/* No version specific in layers.ini, see if we can get it from the 
 			 * pom for this artifact
 			 */
-			for(var art : pluginLayerDef.artifacts()) {
-//				System.out.println(art);
+			for(var artRef : pluginLayerDef.artifacts()) {
+				var art = Artifact.find(artRef, null);
+				if(art.isPresent()) {
+					return gav.toWithVersion(art.get().pom().gav().version());
+				}
 			}
 		}
 		return gav;

@@ -29,7 +29,7 @@ public final class FilesAndFolders {
 	public static void copy(Path source, Path destinationDir) {
 		try {
 			if(!Files.isDirectory(destinationDir))
-				throw new IllegalArgumentException(MessageFormat.format("Destination ''{0}'' must be a directory.", destinationDir));
+				throw new IllegalArgumentException(MessageFormat.format("Destination `{0}` must be a directory.", destinationDir));
 				var destination = destinationDir.resolve(source.getFileName());
 			if(Files.isDirectory(source)) {
 				copyDirectory(source, destination);

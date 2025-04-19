@@ -113,15 +113,15 @@ abstract class AbstractLayer implements Layer {
 		@SuppressWarnings("unchecked")
 		public L fromDescriptor(Descriptor descriptor) {
 			return (L) fromComponentSection(descriptor.component()).
-					   fromRepositoryDefsSection(RemoteRepository.class, descriptor.repositories()).
-					   fromRepositoryDefsSection(AppRepository.class, descriptor.repositories()).
-					   fromRepositoryDefsSection(LocalRepository.class, descriptor.repositories());
+					   fromRepositoryDefsSection(RemoteRepository.class, descriptor.repositories().map(r -> r.obtainSection("remote"))).
+					   fromRepositoryDefsSection(AppRepository.class, descriptor.repositories().map(r -> r.obtainSection("local"))).
+					   fromRepositoryDefsSection(LocalRepository.class, descriptor.repositories().map(r -> r.obtainSection("app")));
 		}
 
 		public final L fromINI(Path path) {
 			try {
 				if(LOG.debug())
-					LOG.debug("Constructing layer from file ''{0}''", path);
+					LOG.debug("Constructing layer from file `{0}`", path);
 				
 				return fromINI(Bootlace.createINIReader().build().read(path));
 			} catch (IOException e) {
@@ -149,7 +149,7 @@ abstract class AbstractLayer implements Layer {
 
 		public final L fromINIResource(String resource, ClassLoader loader) {
 			if(LOG.debug())
-				LOG.debug("Constructing layer from resource ''{0}''", resource);
+				LOG.debug("Constructing layer from resource `{0}`", resource);
 			
 			var in = loader.getResourceAsStream(resource);
 			if (in == null)
@@ -286,7 +286,7 @@ abstract class AbstractLayer implements Layer {
 		
 		if(LOG.debug()) {
 			if(!repositoryDefs.isEmpty()) {
-				LOG.info("Layer ''{0}'' has {1} repository defs", id, repositoryDefs.size());
+				LOG.info("Layer `{0}` has {1} repository defs", id, repositoryDefs.size());
 				repositoryDefs.forEach((k,v) ->
 					LOG.info("   {0} = {1}", k, v.root()) 
 				);
@@ -342,7 +342,7 @@ abstract class AbstractLayer implements Layer {
 	protected RepositoryDef findRepositoryDef(String id) {
 		var def = repositoryDefs.get(id);
 		if(LOG.trace()) {
-			LOG.debug("Looking for repository ''{0}'' in layer ''{1}''", id,  id());
+			LOG.debug("Looking for repository `{0}` in layer `{1}`", id,  id());
 		}
 		if(def == null) {
 			if(rootLayer().isPresent()) {
@@ -351,7 +351,7 @@ abstract class AbstractLayer implements Layer {
 					var parents = parents();
 					
 					if(LOG.trace()) {
-						LOG.debug("''{0}'' does not exist in layer ''{1}'', trying {2} parents", id, id(), parents.size());
+						LOG.debug("`{0}` does not exist in layer `{1}`, trying {2} parents", id, id(), parents.size());
 					}
 					
 					for(var parent : parents) {
@@ -366,7 +366,7 @@ abstract class AbstractLayer implements Layer {
 					
 					if(def == null) {
 						if(LOG.trace()) {
-							LOG.debug("''{0}'' does not exist in layer ''{1}'' or any parents, trying app layer itself", id, id());
+							LOG.debug("`{0}` does not exist in layer `{1}` or any parents, trying app layer itself", id, id());
 						}	 
 						
 						def = app.findRepositoryDef(id);
@@ -375,7 +375,7 @@ abstract class AbstractLayer implements Layer {
 			}
 			else {
 				if(LOG.trace()) {
-					LOG.debug("''{0}'' does not exist in layer ''{1}'', no app layer to try", id, id());
+					LOG.debug("`{0}` does not exist in layer `{1}`, no app layer to try", id, id());
 				}
 			}
 		}

@@ -18,7 +18,6 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-import com.sshtools.bootlace.api.ConfigResolver;
 import com.sshtools.bootlace.api.LayerContext;
 import com.sshtools.bootlace.api.AppRepository.AppRepositoryBuilder;
 import com.sshtools.bootlace.api.LocalRepository.LocalRepositoryBuilder;
@@ -36,5 +35,4 @@ module com.sshtools.bootlace.api {
 	uses LayerContext.Provider;
 	uses PluginContext.Provider;
 	uses Plugin;
-	uses ConfigResolver;
 }

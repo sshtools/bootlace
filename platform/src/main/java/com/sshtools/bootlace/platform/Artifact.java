@@ -26,17 +26,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Optional;
 
 import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.Logs;
-import com.sshtools.bootlace.api.Zip;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
+import com.sshtools.bootlace.api.Zip;
 
 public final class Artifact {
 	private final static Log LOG = Logs.of(BootLog.RESOLUTION);
 
-	public final static Artifact find(ArtifactRef ref, Path jarFile) {
+	public final static Optional<Artifact> find(ArtifactRef ref, Path jarFile) {
 		Path pomFile = jarFile;
 		var path = ref.path().orElse(null);
 		
@@ -58,18 +59,18 @@ public final class Artifact {
 			LOG.info("Artifact from {0}", pomFile);
 			if(pomFile.getFileName().toString().endsWith(".jar")) {
 				try(var in = Zip.find(pomFile, String.format("META-INF/maven/%s/%s/pom.xml", ref.gav().groupId(), ref.gav().artifactId()))) {
-					return new Artifact(ref, POM.of(in));
+					return Optional.of(new Artifact(ref, POM.of(in)));
 				}
 				catch(IOException ioe) {
 					throw new UncheckedIOException(ioe);
 				}
 			}
 			else {
-				return new Artifact(ref, POM.of(pomFile));
+				return Optional.of(new Artifact(ref, POM.of(pomFile)));
 			}
 		}
 		else
-			throw new UnsupportedOperationException(ref.toString());
+			return Optional.empty();
 	}
 	
 	private final ArtifactRef ref;

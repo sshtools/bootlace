@@ -78,7 +78,7 @@ public final class GAV {
 					withClassifier(it.next());
 			} catch (NoSuchElementException nse) {
 				throw new IllegalArgumentException(MessageFormat.format(
-						"Truncated GAV string ''{0}'', must be in format [@repository]:groupId:artifactId[:version][:classifier]. groupId may be empty, i.e. '':artifactId:...'' or ''repository::artifact:...''",
+						"Truncated GAV string `{0}`, must be in format [@repository]:groupId:artifactId[:version][:classifier]. groupId may be empty, i.e. '':artifactId:...'' or ''repository::artifact:...''",
 						String.join(":", parts)));
 			}
 
@@ -183,11 +183,11 @@ public final class GAV {
 	}
 
 	public String version() {
-		return version.orElseThrow(() -> new IllegalStateException(MessageFormat.format("This GAV ''{0}'' has no version", this)));
+		return version.orElseThrow(() -> new IllegalStateException(MessageFormat.format("This GAV `{0}` has no version", this)));
 	}
 
 	public String classifier() {
-		return classifier.orElseThrow(() -> new IllegalStateException(MessageFormat.format("This GAV ''{0}'' has no classifier", this)));
+		return classifier.orElseThrow(() -> new IllegalStateException(MessageFormat.format("This GAV `{0}` has no classifier", this)));
 	}
 
 	public String toString() {
@@ -208,7 +208,7 @@ public final class GAV {
 	}
 
 	public String groupId() {
-		return groupId.orElseThrow(() -> new IllegalStateException(MessageFormat.format("This GAV ''{0}'' has no group", this)));
+		return groupId.orElseThrow(() -> new IllegalStateException(MessageFormat.format("This GAV `{0}` has no group", this)));
 	}
 
 	@Override

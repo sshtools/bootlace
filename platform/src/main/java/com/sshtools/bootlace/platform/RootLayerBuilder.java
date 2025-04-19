@@ -29,11 +29,12 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-import com.sshtools.bootlace.api.Access;
+import com.sshtools.bootlace.api.ArtifactVersion;
 import com.sshtools.bootlace.api.BootContext;
 import com.sshtools.bootlace.api.ChildLayer;
-import com.sshtools.bootlace.api.RootLayer;
 import com.sshtools.bootlace.api.Http.HttpClientFactory;
+import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
+import com.sshtools.bootlace.api.RootLayer;
 import com.sshtools.bootlace.platform.AbstractLayer.AbstractLayerBuilder;
 import com.sshtools.jini.INI;
 
@@ -44,6 +45,7 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 	List<ChildLayer> layers = new ArrayList<>();
 	Optional<HttpClientFactory> httpClientFactory = Optional.empty();
 	Optional<BootstrapRepository> bootstrapRepository = Optional.empty();
+	PluginHostInfo pluginHostInfo = new PluginHostInfo("bootlace", ArtifactVersion.getVersion("com.sshtools", "bootlace-platform"), "bootlace");
 	
 	RootLayerBuilder() {
 		this("_app_");
@@ -91,6 +93,11 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 			} else
 				throw new IllegalArgumentException("Unknown layer type " + type);
 		});
+		return this;
+	}
+
+	public RootLayerBuilder withPluginHostInfo(PluginHostInfo pluginHostInfo) {
+		this.pluginHostInfo = pluginHostInfo;
 		return this;
 	}
 

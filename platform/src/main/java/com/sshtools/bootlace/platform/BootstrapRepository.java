@@ -148,12 +148,12 @@ public final class BootstrapRepository implements LocalRepository {
 				var art = resolveGav(path, gav);
 				
 				if(LOG.debug())
-					LOG.debug("Bootstrap root ''{0}'' resolved ''{1}'' to ''{2}''", path, gav, art);
+					LOG.debug("Bootstrap root `{0}` resolved `{1}` to `{2}`", path, gav, art);
 				
 				if(Files.exists(art)) {
 					
 					if(LOG.debug())
-						LOG.debug("Exists! Using ''{0}'' for ''{1}''", art, gav);
+						LOG.debug("Exists! Using `{0}` for `{1}`", art, gav);
 					
 					return Optional.of(ResolutionResult.of(art.toUri()));
 				}

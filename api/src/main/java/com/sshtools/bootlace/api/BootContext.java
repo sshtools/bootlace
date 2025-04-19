@@ -23,6 +23,8 @@ package com.sshtools.bootlace.api;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
+
 /**
  * Public API that allows access to the containing application bootstrap.
  */
@@ -34,9 +36,13 @@ public interface BootContext {
 	}
 
 	public static BootContext named(String name) {
+		return host(new PluginHostInfo(name));
+	}
+	
+	public static BootContext host(PluginHostInfo host) {
 		return new BootContext() {
-			public String name() {
-				return name;
+			public PluginHostInfo info() {
+				return host;
 			}
 
 			@Override
@@ -62,12 +68,12 @@ public interface BootContext {
 	}
 	
 	/**
-	 * The name of the bootstrap. This is typically the name of the application making
+	 * The information about the plugin host. This is typically the name of the application making
 	 * use of <strong>Bootlace</strong>.
 	 * 
-	 * @return name
+	 * @return info
 	 */
-	String name();
+	PluginHostInfo info();
 
 	/**
 	 * Get whether all layers, i.e. the entire application, may be shutdown.

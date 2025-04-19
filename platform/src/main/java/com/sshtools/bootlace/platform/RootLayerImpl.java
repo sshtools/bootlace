@@ -39,9 +39,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.ServiceLoader.Provider;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
@@ -51,7 +53,10 @@ import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.BootContext;
 import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.Collect;
+import com.sshtools.bootlace.api.DependencyGraph;
+import com.sshtools.bootlace.api.DependencyGraph.Dependency;
 import com.sshtools.bootlace.api.Exceptions;
+import com.sshtools.bootlace.api.GAV;
 import com.sshtools.bootlace.api.Http;
 import com.sshtools.bootlace.api.Http.HttpClientFactory;
 import com.sshtools.bootlace.api.Layer;
@@ -59,6 +64,7 @@ import com.sshtools.bootlace.api.LayerContext;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
+import com.sshtools.bootlace.api.NodeModel;
 import com.sshtools.bootlace.api.Plugin;
 import com.sshtools.bootlace.api.PluginContext;
 import com.sshtools.bootlace.api.PluginLayer;
@@ -231,6 +237,17 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		public boolean hasPlugin(String className) {
 			return pluginObjects.keySet().stream().map(Class::getName).toList().contains(className);
 		}
+		
+
+		final Set<GAV> artifacts = new LinkedHashSet<GAV>();
+
+		void addArtifact(GAV artifact) {
+			artifacts.add(artifact);
+		}
+		
+		boolean hasArtifact(GAV artifact) {
+			return artifacts.contains(artifact.toWithoutVersion());
+		}
 
 	}
 
@@ -259,7 +276,6 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		this.bootstrapRepository = builder.bootstrapRepository.or(() -> BootContext.isDeveloper() 
 				? Optional.of(BootstrapRepository.bootstrapRepository()) 
 				: Optional.empty());
-		
 		this.userAgent = builder.userAgent.orElse("Bootlace");
 		this.httpClientFactory = builder.httpClientFactory.orElseGet(Http::defaultClientFactory);
 
@@ -332,7 +348,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 	@Override
 	public ChildLayer getLayer(String id) {
-		return getLayerOr(id).orElseThrow(() -> new IllegalArgumentException(format("No layer with ID ''{0}''", id)));
+		return getLayerOr(id).orElseThrow(() -> new IllegalArgumentException(format("No layer with ID `{0}`", id)));
 	}
 
 	@Override
@@ -361,7 +377,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	void addLayer(String id, ChildLayer layer) {
 		var map = initialising ? tempLayers : layers;
 		if(map.put(id, layer) != null) {
-			throw new IllegalArgumentException(MessageFormat.format("Layer ''{0}'' is already known.", id));
+			throw new IllegalArgumentException(MessageFormat.format("Layer `{0}` is already known.", id));
 		}
 	}
 	
@@ -373,7 +389,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		try {
 			if(child instanceof PluginLayer) {
 				var pchild = (PluginLayerImpl)child;
-				LOG.info("Post-initialising plugins in layer ''{0}''", child.id());
+				LOG.info("Post-initialising plugins in layer `{0}`", child.id());
 				pchild.pluginRefs.forEach(ref -> { 
 					LOG.info("    {0}", ref.plugin().getClass().getName());
 					PluginContextProviderImpl.current.set(ref.context());
@@ -465,22 +481,22 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 //	
 //	
 
-		LOG.info("Opening child layer {0}. {1}", layerDef.id());
-		LOG.debug(layerDef);
-
 		var id = layerDef.id();			
+
+		LOG.info("Opening child layer `{0}`. {1}", id, layerDef.name().orElse("Unnammed"));
+		LOG.debug(layerDef);
 			
 		monitor().ifPresent(mon -> mon.loadingLayer(layerDef));
 		if (layerDef instanceof PluginLayer) {
 			
 			if (LOG.debug()) {
-				LOG.debug("{0} is a plugin layer", id);
+				LOG.debug("`{0}` is a plugin layer", id);
 			}
 
 			//
 			var pluginLayerDef = (PluginLayerImpl) layerDef;
 			
-			LOG.info("Aritfacts: {0}}", String.join(", ", pluginLayerDef.artifacts().stream().map(ArtifactRef::toString).toList()));
+			LOG.info("Aritfacts: {0}" , System.lineSeparator() + "    " +String.join("," + System.lineSeparator() + "    ", pluginLayerDef.artifacts().stream().map(ArtifactRef::toString).toList()));
 			
 			var layerArtifacts = new LayerArtifactsImpl(pluginLayerDef, httpClientFactory, root);
 			pluginLayerDef.layerArtifacts = Optional.of(layerArtifacts);
@@ -491,7 +507,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 			loadPlugins(pluginLayerDef, id, parents, layer);
 		
-			LOG.info("Initialising plugins in layer ''{0}''", id);
+			LOG.info("Initialising plugins in layer `{0}`", id);
 			pluginLayerDef.pluginRefs.forEach(ref -> { 
 				LOG.info("    {0}", ref.plugin().getClass().getName()); 
 				PluginContextProviderImpl.current.set(ref.context());
@@ -558,18 +574,82 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		
 		return module;
 	}
+	
+
+	private final static class JPMSPlugins  {
+		private final List<JPMSNode> list;
+		
+		private JPMSPlugins(ModuleLayer layer) {
+
+			 list = ServiceLoader.load(layer, Plugin.class).
+					 stream().
+					 map(p -> new JPMSNode(p, this)).
+					 toList();
+			
+		}
+		
+		private List<JPMSNode> sorted() {
+			var topologicallySorted = new ArrayList<>(new DependencyGraph<>(list).getTopologicallySorted());
+			list.forEach(l -> { 
+				if(!topologicallySorted.contains(l)) {
+					topologicallySorted.add(l);
+				}
+			});
+			return  topologicallySorted;
+		}
+		
+		private Optional<JPMSNode> forModule(String req) {
+			return list.stream().filter(p -> p.getProvider().type().getModule().getName().equals(req)).findFirst();
+		}
+	}
+	
+	private final static class JPMSNode implements NodeModel<JPMSNode> {
+		
+		private final ServiceLoader.Provider<Plugin> provider;
+		private final JPMSPlugins plugins;
+		
+		private JPMSNode(Provider<Plugin> provider, JPMSPlugins plugins) {
+			super();
+			this.provider = provider;
+			this.plugins = plugins;
+		}
+
+		private ServiceLoader.Provider<Plugin> getProvider() {
+			return provider;
+		}
+
+		@Override
+		public String name() {
+			return provider.type().getName();
+		}
+
+		@Override
+		public String toString() {
+			return name() + " [" + provider.type().getModule().getName() + "]";
+		}
+
+		@Override
+		public void dependencies(Consumer<Dependency<JPMSNode>> model) {
+			var desc = provider.type().getModule().getDescriptor();
+			desc.requires().stream().forEach(req -> {
+				plugins.forModule(req.name()).ifPresent(node -> {
+					model.accept(new Dependency<RootLayerImpl.JPMSNode>(node, this));
+					node.dependencies(model);
+				});	
+			});
+		}
+		
+	}
 
 	private void loadPlugins(PluginLayerImpl pluginLayer, String id, Set<ModuleLayer> parents, ModuleLayer layer) {
 
-		LOG.info("Loading plugins for layer ''{0}''", id);
+		LOG.info("Loading plugins for layer `{0}`", id);
 
-		/*
-		 * We only use the first implementation found. This will be the childs own
-		 * {@link Plugin}
-		 */
 		var pluginObjects = new ConcurrentHashMap<Class<? extends Plugin>, Plugin>();
+		var pluginProcessor = new JPMSPlugins(layer);
+		var sorted = pluginProcessor.sorted();
+		var it = sorted.iterator();
 		
-		var it = ServiceLoader.load(layer, Plugin.class).stream().iterator();
 		while(it.hasNext()) {
 			
 			/* Create context first and register it so it can be accessed by plugins
@@ -580,27 +660,27 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			PluginContextProviderImpl.current.set(context);
 			try {
 			
-				var pluginProvider = it.next();
+				var pluginProvider = it.next().getProvider();
 				var type = pluginProvider.type();
 				var modLayer = type.getModule().getLayer();
 				
 				if(!modLayer.equals(layer)) {
 					if(LOG.trace())
-						LOG.trace("Skipping plugin ''{0}'' because it is in a different layer.", type.getName());
+						LOG.trace("Skipping plugin `{0}` because it is in a different layer.", type.getName());
 					continue;
 				}
 				
 				var plugin = pluginProvider.get();
 	
-				LOG.info("Loading plugin ''{0}''", plugin.getClass().getName());
+				LOG.debug("Loading plugin `{0}`", plugin.getClass().getName());
 	
 				pluginLayer.pluginRefs.add(new PluginRef(plugin, context));
 				pluginObjects.put(plugin.getClass(), plugin);
 				if(this.pluginObjects.put(plugin.getClass(), plugin) != null) {
-					throw new IllegalStateException(MessageFormat.format("Plugin ''{0}'' found more than once.",  plugin.getClass().getName()));
+					throw new IllegalStateException(MessageFormat.format("Plugin `{0}` found more than once.",  plugin.getClass().getName()));
 				}
 	
-				LOG.info("Loaded plugin ''{0}''", plugin.getClass().getName());
+				LOG.info("Loaded plugin `{0}`", plugin.getClass().getName());
 			}
 			finally {
 				PluginContextProviderImpl.current.set(context);				
@@ -616,7 +696,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			ModuleLayer parentLayer = moduleLayers.get(parent);
 			if (parentLayer == null) {
 				throw new IllegalArgumentException(
-						"Layer '" + layer.id() + "': parent layer '" + parent + "' not configured yet");
+						"Layer `" + layer.id() + "`: parent layer `" + parent + "` not configured yet");
 			}
 
 			parentLayers.add(parentLayer);

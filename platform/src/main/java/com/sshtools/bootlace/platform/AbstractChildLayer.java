@@ -222,7 +222,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			String id, Class<? extends REPO> repoClass, Class<? extends BLDR> builderClass) {
  		
  		if (LOG.debug()) {
-			LOG.debug("Looking for repository definition ''{0}'', type ''{1}'' for layer ''{2}''", id, repoClass.getName(), id());
+			LOG.debug("Looking for repository definition `{0}`, type `{1}` for layer `{2}`", id, repoClass.getName(), id());
 		}
  		
  		var def = findRepositoryDef(id);
@@ -241,17 +241,17 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
  				return (Optional<REPO>) Optional.of(AppRepositoryImpl.appRepository());
  			}
  			else {
- 				throw new IllegalArgumentException(MessageFormat.format("No repository def for ''{0}''.", id));
+ 				throw new IllegalArgumentException(MessageFormat.format("No repository def for `{0}`.", id));
  			}
  		}
  		if(!def.type().equals(repoClass)) {
- 			throw new IllegalArgumentException(MessageFormat.format("Unexpected repository type for ''{0}''. Expected ''{1}'', got ''{2}''.", id, repoClass.getName(), def.type().getName()));
+ 			throw new IllegalArgumentException(MessageFormat.format("Unexpected repository type for `{0}`. Expected `{1}`, got `{2}`.", id, repoClass.getName(), def.type().getName()));
  		}
  		
 		var thisModuleLayer = getClass().getModule().getLayer();
 		var bldrOr = ServiceLoader.load(thisModuleLayer, builderClass).findFirst();
 		if(bldrOr.isEmpty()) {
-			LOG.debug("NO repository builder of type ''{0}'' of class ''{1}'' in child layers of ''{2}'', trying service layers", id, builderClass.getName(), thisModuleLayer);
+			LOG.debug("NO repository builder of type `{0}` of class `{1}` in child layers of `{2}`, trying service layers", id, builderClass.getName(), thisModuleLayer);
 		}
 		else {
 			
@@ -279,7 +279,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 		}
 		else if(bldr instanceof AppRepositoryBuilder abldr) {
 			if(!def.id().equals(AppRepository.ID)) {
-				throw new IllegalStateException(MessageFormat.format("App repository ''{0}'' must have id of ''{1}''", def.id(), AppRepository.ID));
+				throw new IllegalStateException(MessageFormat.format("App repository `{0}` must have id of `{1}`", def.id(), AppRepository.ID));
 			}
 			def.pattern().ifPresent(abldr::withPattern);
 		}

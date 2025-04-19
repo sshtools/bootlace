@@ -42,10 +42,12 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.io.UncheckedIOException;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -68,6 +70,8 @@ import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.inject.Description;
 
+import com.sshtools.jini.INI;
+
 /**
  * Generates a bootlace plugin from the current project
  */
@@ -76,7 +80,7 @@ import org.sonatype.inject.Description;
 public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 	protected static final String SEPARATOR = "/";
-
+	
 	/**
 	 * The maven project.
 	 * 
@@ -171,6 +175,37 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 	protected void generateZip(Properties sourceProperties, File zipfile, List<Artifact> artifacts)
 			throws IOException, FileNotFoundException {
 
+		
+		if(!isExtension(project.getArtifact().getFile())) {
+			throw new IllegalArgumentException("Project is not an extension, a layers.ini resource must exist.");
+		}
+		
+		
+		/* We need to work out which artifacts are provided by other extensions, and
+		 * to do so without using mavens "provided" scope. This is because provided
+		 * prevents transitive dependencies being pulled in, meaning dependencies of
+		 * other extensions have to explicitly to be added. This gets very boring
+		 * very quickly. Being as layers.ini is required anyway, we use that instead.
+		 * 
+		 * We do this by going through all the dependent artifacts, and
+		 * inspect its layers.ini for any dependencies and add them to a set. 
+		 * 
+		 * Then we build the zip, and include this projects artifact and any
+		 * dependent artifacts that are not in the set. Of course, we do not include
+		 * any artifacts the ARE extensions themselves, or any artifact that has a
+		 * META-INF/BOOTLACE.provided resource.
+		 */
+		var inDependency = new HashSet<String>();
+		for(var a : artifacts) {
+			if (!isExclude(a) && isExtension(a.getFile())) {
+				var layers = getLayers(a.getFile());
+				layers.sectionOr("artifacts").ifPresent(lyr -> {
+					for(var key : lyr.keys()) {
+						inDependency.add(String.join(":", Arrays.asList(key.split(":")).subList(0,  2)));
+					}
+				});
+			}
+		}
 		try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(zipfile))) {
 
 			var art = project.getArtifact();
@@ -193,7 +228,18 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 				File resolvedFile = null;
 				String outName = null;
 
-				if (isExclude(a)) {
+				if(artifactKey.equals("com.sshtools:jini-lib")) {
+					/* TODO this is unfortunate. We need to find a way to hide this from child layers,
+					 *  or not use it at all so bootlacec-platform has zero dependencies
+					 */
+					log.info("Artifact " + artifactKey + " is a bootlace-platform dependency, skipping");
+					continue;
+				}
+				else if(inDependency.contains(artifactKey)) {
+					log.info("Artifact " + artifactKey + " is provided as a dependency of an a extension");
+					continue;
+				}
+				else if (isExclude(a)) {
 					log.info("Artifact " + artifactKey + " is excluded");
 					continue;
 				} else {
@@ -201,7 +247,7 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 					resolvedFile = a.getFile();
 				}
 
-				outName = resolvedFile.getName();
+				outName = makeFilename(a);
 
 				if (!resolvedFile.exists()) {
 					log.warn(resolvedFile.getAbsolutePath() + " does not exist!");
@@ -210,6 +256,11 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 				if (resolvedFile.isDirectory()) {
 					log.warn(resolvedFile.getAbsolutePath() + " is a directory");
 					resolvedFile = a.getFile();
+				}
+				
+				if(isExtensionOrBootlaceProvided(resolvedFile)) {
+					log.info("Artifact " + artifactKey + " is an extension, not adding");
+					continue;
 				}
 
 				log.info("Adding " + outName + " to plugin zip");
@@ -238,6 +289,47 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 		}
 	}
 
+	private INI getLayers(File file) {
+		if(file.isDirectory()) {
+			return INI.fromFile(new File(file, "layers.ini").toPath());
+		}
+		else {
+			try(var jf = new JarFile(file)) {
+				var je = jf.getEntry("layers.ini");
+				if(je == null)
+					throw new IOException("No layers.ini in " + file);
+				try(var ji = jf.getInputStream(je)) {
+					return INI.fromInput(ji);
+				}
+			}
+			catch(IOException ioe) {
+				throw new UncheckedIOException(ioe);
+			}
+		}
+	}
+
+	private boolean isExtension(File resolvedFile) {
+		return new File(resolvedFile, "layers.ini").exists() || isArtifactContains(resolvedFile, "layers.ini");
+	}
+
+	private boolean isExtensionOrBootlaceProvided(File resolvedFile) {
+		return isArtifactContains(resolvedFile, "layers.ini", "META-INF/BOOTLACE.provided");
+	}
+
+	private boolean isArtifactContains(File resolvedFile, String... entryNames) {
+		try(var jf = new JarFile(resolvedFile)) {
+			for(var n : entryNames) {
+				if(jf.getEntry(n) != null) {
+					return true;
+				}
+			}
+			return false;
+		}
+		catch(IOException ioe) {
+			throw new UncheckedIOException(ioe);
+		}
+	}
+
 	private String getOutName(Artifact art) {
 		if (art.getClassifier() == null || art.getClassifier().length() == 0)
 			return art.getGroupId() + "-" + art.getArtifactId() + "-" + art.getVersion() + "." + art.getType();
@@ -256,10 +348,17 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 		return false;
 	}
 
+	public static String makeFilename(Artifact a) {
+		if(a.getClassifier() == null || a.getClassifier().equals(""))
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + "." + a.getType();
+		else
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + "." + a.getType();
+	}
+
 	public static String makeKey(Artifact a) {
 		if (a.getClassifier() == null || a.getClassifier().equals(""))
-			return a.getGroupId() + "/" + a.getArtifactId();
+			return a.getGroupId() + ":" + a.getArtifactId();
 		else
-			return a.getGroupId() + "/" + a.getArtifactId() + ":" + a.getClassifier();
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getClassifier();
 	}
 }

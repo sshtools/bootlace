@@ -35,8 +35,8 @@ import com.sshtools.bootlace.platform.RemoteRepositoryImpl;
 
 module com.sshtools.bootlace.platform {
 	requires transitive com.sshtools.bootlace.api;
-	requires transitive com.sshtools.jini;
 	exports com.sshtools.bootlace.platform;
+	exports com.sshtools.bootlace.platform.jini;
 	requires transitive java.net.http;
 	uses Plugin;
 	uses LocalRepositoryBuilder;

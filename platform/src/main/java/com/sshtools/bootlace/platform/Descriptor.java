@@ -34,8 +34,8 @@ import java.util.Optional;
 
 import com.sshtools.bootlace.api.Exceptions;
 import com.sshtools.bootlace.api.Zip;
-import com.sshtools.jini.INI;
-import com.sshtools.jini.INI.Section;
+import com.sshtools.bootlace.platform.jini.INI;
+import com.sshtools.bootlace.platform.jini.INI.Section;
 
 public final class Descriptor {
 

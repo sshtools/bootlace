@@ -42,12 +42,12 @@ import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
+import com.sshtools.bootlace.platform.jini.INI;
+import com.sshtools.bootlace.platform.jini.INI.Section;
 import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.Repository;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.bootlace.api.RootLayer;
-import com.sshtools.jini.INI;
-import com.sshtools.jini.INI.Section;
 
 abstract class AbstractLayer implements Layer {
 

@@ -264,10 +264,10 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 						});
 					});
 				}
-				else if(v.length == 1) {
+				else if(v.length == 1 && !v[0].equals("")) {
 					addArtifactsIfNotDone(ArtifactRef.of(GAV.ofSpec(k), Paths.get(v[0])));
 				}
-				else if(v.length == 0) {
+				else if(v.length == 0 || (v.length == 1 && v[0].equals(""))) {
 					addArtifactsIfNotDone(ArtifactRef.of(GAV.ofSpec(k)));
 				}
 			});

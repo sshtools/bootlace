@@ -22,9 +22,9 @@ package com.sshtools.bootlace.platform;
 
 
 import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
-import com.sshtools.jini.INIReader;
-import com.sshtools.jini.INIReader.DuplicateAction;
-import com.sshtools.jini.INIReader.MultiValueMode;
+import com.sshtools.bootlace.platform.jini.INIReader;
+import com.sshtools.bootlace.platform.jini.INIReader.DuplicateAction;
+import com.sshtools.bootlace.platform.jini.INIReader.MultiValueMode;
 
 public class Bootlace {
 

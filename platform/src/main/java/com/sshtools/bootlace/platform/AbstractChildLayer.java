@@ -23,7 +23,9 @@ package com.sshtools.bootlace.platform;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
@@ -43,9 +45,9 @@ import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.RemoteRepository.RemoteRepositoryBuilder;
 import com.sshtools.bootlace.api.Repository;
 import com.sshtools.bootlace.api.Repository.RepositoryBuilder;
+import com.sshtools.bootlace.platform.jini.INI.Section;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.bootlace.api.RootLayer;
-import com.sshtools.jini.INI.Section;
 
 public abstract class AbstractChildLayer extends AbstractLayer implements ChildLayer {
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
@@ -120,6 +122,28 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 	}
 
 	@Override
+	public final ModuleLayer moduleLayer() {
+		if(rootLayer != null && this.rootLayer.isPresent()) {
+			var lyr = ((RootLayerImpl)this.rootLayer.get()).moduleLayers.get(id());
+			if(lyr != null)
+				return lyr;
+		}
+		return ModuleLayer.boot();
+	}
+
+	@Override
+	public final List<ChildLayer> childLayers() {
+		if(rootLayer != null && this.rootLayer.isPresent()) {
+			return  ((RootLayerImpl)this.rootLayer.get()).layers.values().stream().
+					filter(l -> l.parents().contains(id())).
+					toList();
+		}
+		else {
+			return Collections.emptyList();
+		}
+	}
+
+	@Override
 	public final Set<String> parents() {
 		return parents;
 	}
@@ -161,10 +185,12 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			if(rootLayer.isPresent()) {
 				var app = rootLayer.get();
 				for (var parent : parents) {
-					var moduleLayer = (AbstractChildLayer) ((RootLayerImpl) app).getLayer(parent);
-					var mon = moduleLayer.resolveMonitor();
-					if(mon.isPresent())
-						return mon;
+					var moduleLayer = ((RootLayerImpl) app).getLayerOr(parent);
+					if(moduleLayer.isPresent()) {
+						var mon = ((AbstractChildLayer) moduleLayer.get()).resolveMonitor();
+						if(mon.isPresent())
+							return mon;
+					}
 				}
 				if(app.monitor().isPresent())
 					return app.monitor();

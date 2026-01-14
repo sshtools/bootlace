@@ -43,7 +43,7 @@ import com.sshtools.bootlace.api.LayerArtifacts;
 import com.sshtools.bootlace.api.PluginLayer;
 import com.sshtools.bootlace.api.PluginRef;
 import com.sshtools.bootlace.api.Zip;
-import com.sshtools.jini.INI.Section;
+import com.sshtools.bootlace.platform.jini.INI.Section;
 
 public final class PluginLayerImpl extends AbstractChildLayer implements PluginLayer {
 	public final static class Builder extends AbstractChildLayerBuilder<PluginLayerImpl.Builder> {
@@ -83,8 +83,18 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 		public PluginLayerImpl.Builder withJarArtifacts(Path... paths) {
 			Arrays.asList(paths).forEach((path) -> {
 				try(var in = Files.newInputStream(path)) {
-					var props = getMavenPropertiesForArtifact(in);
-					withArtifactRefs(refFromProperties(props).withPath(path));
+					try {
+						withArtifactRefs(refFromProperties(getMavenPropertiesForArtifact(in)).withPath(path));
+					}
+					catch(IllegalArgumentException iae) {
+						/* Might be Maven supplied  jar without any maven data. First encountered
+						 * with javafx platform jars (e.g. with `linux` classifier).   
+						 */
+						withArtifactRefs(refFromFilename(path).withPath(path));
+						
+					}
+					
+					
 				} catch (IOException ioe) {
 					throw new UncheckedIOException(ioe);
 				}	
@@ -119,6 +129,10 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 				props.getProperty("artifactId"),
 				props.getProperty("version")
 			));
+		}
+
+		private ArtifactRef refFromFilename(Path props) {
+			return ArtifactRef.of(GAV.ofSpec(props.getFileName().toString()));
 		}
 
 		private Properties getMavenPropertiesForArtifact(InputStream in) throws IOException {

@@ -20,15 +20,22 @@
  */
 package com.sshtools.bootlace.api;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
 import java.util.Set;
 
 /**
- * The public API of a layer. Every Bootlace application is made up of mutliple layers
+ * The public API of a layer. Every Bootlace application is made up of multiple layers
  * each attached to at least one parent.
  * <p>
  * Enforced by JPMS, a layer may only access classes and resources in a parent layer.
  * For every {@link Layer} there is a corresponding {@link ModuleLayer}. 
+ * <p>
+ * The exception for this is services, which may search child layers for service implementations.
+ * 
+ * 
  */
 public interface Layer {
 	/**
@@ -63,4 +70,18 @@ public interface Layer {
 	default Optional<LayerArtifacts> finalArtifacts() {
 		return Optional.empty();
 	}
+	
+	/**
+	 * The JPMS module layer for this bootlace layer.
+	 *  
+	 * @return module layer
+	 */
+	ModuleLayer moduleLayer();
+
+	/**
+	 * Get all of the layers that have this layer as a parent.
+	 * 
+	 * @return layers
+	 */
+	List<ChildLayer> childLayers();
 }

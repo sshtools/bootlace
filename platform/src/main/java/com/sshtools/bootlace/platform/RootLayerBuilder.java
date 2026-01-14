@@ -36,7 +36,7 @@ import com.sshtools.bootlace.api.Http.HttpClientFactory;
 import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
 import com.sshtools.bootlace.api.RootLayer;
 import com.sshtools.bootlace.platform.AbstractLayer.AbstractLayerBuilder;
-import com.sshtools.jini.INI;
+import com.sshtools.bootlace.platform.jini.INI;
 
 public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilder> {
 
@@ -46,6 +46,8 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 	Optional<HttpClientFactory> httpClientFactory = Optional.empty();
 	Optional<BootstrapRepository> bootstrapRepository = Optional.empty();
 	PluginHostInfo pluginHostInfo = new PluginHostInfo("bootlace", ArtifactVersion.getVersion("com.sshtools", "bootlace-platform"), "bootlace");
+	Optional<PluginInitializer> pluginInitializer = Optional.empty();
+	Optional<PluginDestroyer> pluginDestroyer;
 	
 	RootLayerBuilder() {
 		this("_app_");
@@ -134,6 +136,16 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 
 	public RootLayerBuilder withUserAgent(String userAgent) {
 		this.userAgent = Optional.of(userAgent);
+		return this;
+	}
+
+	public RootLayerBuilder withPluginInitialiser(PluginInitializer pluginWrapper) {
+		this.pluginInitializer = Optional.of(pluginWrapper);
+		return this;
+	}
+
+	public RootLayerBuilder withPluginDestroyer(PluginDestroyer pluginDestroyer) {
+		this.pluginDestroyer = Optional.of(pluginDestroyer);
 		return this;
 	}
 

@@ -33,12 +33,15 @@ import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchKey;
 import java.text.MessageFormat;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,16 +49,20 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import com.sshtools.bootlace.api.BootContext;
+import com.sshtools.bootlace.api.DependencyGraph;
+import com.sshtools.bootlace.api.DependencyGraph.Dependency;
 import com.sshtools.bootlace.api.Exceptions.NotALayer;
 import com.sshtools.bootlace.api.ExtensionLayer;
 import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
+import com.sshtools.bootlace.api.NodeModel;
 import com.sshtools.bootlace.api.Zip;
-import com.sshtools.jini.INI;
+import com.sshtools.bootlace.platform.jini.INI;
 
 /**
  * A Container layer that watches a particular directory to load further layers
@@ -340,7 +347,6 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			checkForLoadableLayers();
 			checkForDeletedLayers();
 		} catch (RuntimeException e) {
-			e.printStackTrace();
 			LOG.error("Failed to refresh dynamic layers.", e);
 		} catch (IOException e) {
 //			LOG.warning("Failed to refresh dynamic layers.", e);
@@ -376,12 +382,65 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			extensions.remove(layer);
 		}
 	}
+	
+	private final static class DescriptorDir implements NodeModel<DescriptorDir>{
+		
+		private final Path dir;
+		private final Descriptor descriptor;
+		private final List<DescriptorDir> all;
+
+		public DescriptorDir(Path dir, Descriptor descriptor, List<DescriptorDir> all) {
+			super();
+			this.dir = dir;
+			this.descriptor = descriptor;
+			this.all = all;
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(descriptor.id());
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DescriptorDir other = (DescriptorDir) obj;
+			return Objects.equals(descriptor.id(), other.descriptor.id());
+		}
+
+		@Override
+		public String name() {
+			return descriptor.id();
+		}
+
+		@Override
+		public void dependencies(Consumer<Dependency<DescriptorDir>> model) {
+			Arrays.asList(descriptor.component().getAllElse("parent", new String[0])).forEach(par -> {
+				find(par).ifPresent(dd  -> {
+					model.accept(new Dependency<DescriptorDir>(dd, this));
+				});
+			});;
+		}
+		
+		Optional<DescriptorDir> find(String id) {
+			return  all.stream().filter(d -> d.descriptor.id().equals(id)).findFirst();
+		}
+		
+	} 
 
 	private void checkForLoadableLayers() throws IOException {
+		
+		var l = new ArrayList<DescriptorDir>();
 		try (var stream = Files.newDirectoryStream(directory,
 				(f) -> Files.isDirectory(f) && 
 				!f.getFileName().toString().endsWith(".backup") && 
 				!f.getFileName().toString().endsWith(".tmp"))) {
+			
 			for (var dir : stream) {
 				Descriptor descriptor = null;
 				try (var dirStream = Files.newDirectoryStream(dir)) {
@@ -404,11 +463,21 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 				if(descriptor == null) {
 					LOG.warning("No loadable layers in extenssion directory {0}", dir);
 				}
-				else {					
-					maybeLoadLayer(dir, descriptor);
+				else {		
+					l.add(new DescriptorDir(directory, descriptor, l));
 				}
 			}
+			
 		}
+
+		List<DescriptorDir> topologicallySorted = new ArrayList<>(new DependencyGraph<>(l).getTopologicallySorted());
+		l.forEach(a -> { 
+			if(!topologicallySorted.contains(a)) {
+				topologicallySorted.add(a);
+			}
+		});
+
+		topologicallySorted.forEach(lyr -> maybeLoadLayer(lyr.dir, lyr.descriptor));
 	}
 
 	private void maybeLoadLayer(Path dir, Descriptor descriptor) {
@@ -441,7 +510,7 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			var layer = new PluginLayerImpl.Builder(id).
 					fromDescriptor(descriptor).
 					withParents(id()).
-					withJarArtifactsDirectory(dir).
+					withJarArtifactsDirectory(dir.resolve(id)).
 					build();
 
 			var appLayer = (RootLayerImpl) rootLayer()

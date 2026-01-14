@@ -21,34 +21,22 @@
 package com.sshtools.bootlace.mavenplugin;
 
 import java.io.File;
-import java.io.FilterInputStream;
-import java.io.FilterOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.jar.Manifest;
+import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.transform.OutputKeys;
-import javax.xml.transform.Transformer;
-import javax.xml.transform.TransformerFactory;
-import javax.xml.transform.dom.DOMSource;
-import javax.xml.transform.stream.StreamResult;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.handler.ArtifactHandler;
@@ -60,7 +48,6 @@ import org.apache.maven.artifact.repository.layout.ArtifactRepositoryLayout;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
@@ -75,7 +62,13 @@ import org.apache.maven.shared.transfer.dependencies.DependableCoordinate;
 import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolver;
 import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolverException;
 import org.codehaus.plexus.util.StringUtils;
-import org.w3c.dom.Document;
+
+import com.sshtools.jini.INI;
+import com.sshtools.jini.INIParseException;
+import com.sshtools.jini.INIReader;
+import com.sshtools.jini.INIReader.DuplicateAction;
+import com.sshtools.jini.INIReader.MultiValueMode;
+import com.sshtools.jini.INIWriter;
 
 /**
  * Abstract
@@ -147,7 +140,7 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	protected List<String> excludeClassifiers;
 	@Parameter(property = "bootlace.copyOncePerRuntime", defaultValue = "true")
 	protected boolean copyOncePerRuntime = true;
-	
+
 	/**
 	 * Which groups can contain extensions. This can massively speed up dependency
 	 * by not needlessly contacting a Maven repository to determine if an artifact
@@ -210,6 +203,33 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 
 	protected Set<String> artifactsDone = new HashSet<>();
 
+	public static String makeArtifactName(Artifact a) {
+		return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
+	}
+
+	public static String makeKey(Artifact a) {
+		if (a.getClassifier() == null || a.getClassifier().equals(""))
+			return a.getGroupId() + ":" + a.getArtifactId();
+		else
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getClassifier();
+	}
+
+	public static String makeOutName(Artifact art) {
+		if (art.getClassifier() == null || art.getClassifier().length() == 0)
+			return art.getGroupId() + "-" + art.getArtifactId() + "-" + art.getVersion() + "." + art.getType();
+		else
+			return art.getGroupId() + "-" + art.getArtifactId() + "-" + art.getVersion() + "-" + art.getClassifier()
+					+ "." + art.getType();
+	}
+
+	public static String makeFilename(Artifact a) {
+		if (a.getClassifier() == null || a.getClassifier().equals(""))
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + "." + a.getType();
+		else
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + "."
+					+ a.getType();
+	}
+
 	private void handleResult(ArtifactResult result)
 			throws MojoExecutionException, DependencyResolverException, ArtifactResolverException {
 
@@ -232,6 +252,13 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 		}
 	}
 
+	protected ArrayList<Artifact> getFilteredDependencies() {
+		var filteredList = new ArrayList<>(
+				project.getArtifacts().stream().filter(a -> !"provided".equals(a.getScope()) || provided).toList());
+		getLog().info("Adding " + filteredList.size() + " primary artifacts ");
+		return filteredList;
+	}
+
 	protected boolean isExclude(Artifact artifact) {
 		return artifact != null && artifact.getClassifier() != null && artifact.getClassifier().length() > 0
 				&& excludeClassifiers != null && excludeClassifiers.contains(artifact.getClassifier());
@@ -251,8 +278,8 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 			DependencyResolverException, ArtifactResolverException {
 
 		var always = new ArtifactRepositoryPolicy(true,
-				updatePolicy == null ? ArtifactRepositoryPolicy.UPDATE_POLICY_INTERVAL + ":60" : updatePolicy, 
-				checksumPolicy == null ? ArtifactRepositoryPolicy.CHECKSUM_POLICY_IGNORE : checksumPolicy );
+				updatePolicy == null ? ArtifactRepositoryPolicy.UPDATE_POLICY_INTERVAL + ":60" : updatePolicy,
+				checksumPolicy == null ? ArtifactRepositoryPolicy.CHECKSUM_POLICY_IGNORE : checksumPolicy);
 //		ArtifactRepositoryPolicy always = new ArtifactRepositoryPolicy(true,
 //				updatePolicy == null ? ArtifactRepositoryPolicy.UPDATE_POLICY_NEVER : updatePolicy,
 //				checksumPolicy == null ? ArtifactRepositoryPolicy.CHECKSUM_POLICY_IGNORE : checksumPolicy);
@@ -284,11 +311,11 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 			log.debug("Resolving " + coordinate + " with transitive dependencies");
 			for (ArtifactResult result : dependencyResolver.resolveDependencies(buildingRequest, coordinate, null)) {
 
-				if("provided".equals(result.getArtifact().getScope()) && !provided) {
+				if ("provided".equals(result.getArtifact().getScope()) && !provided) {
 					log.debug("Skipping provided dependency " + coordinate);
 					continue;
 				}
-				
+
 				/*
 				 * If the coordinate is for an extension zip, then we only we transitive
 				 * dependencies that also have an extension zip
@@ -315,31 +342,146 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 
 	}
 
+	protected boolean isArtifactContains(File resolvedFile, String... entryNames) {
+		if (resolvedFile.exists()) {
+			if(resolvedFile.isDirectory()) {
+				for (var n : entryNames) {
+					if (new File(resolvedFile, n).exists()) {
+						return true;
+					}
+				}
+			}
+			else {
+				try (var jf = new JarFile(resolvedFile)) {
+					for (var n : entryNames) {
+						if (jf.getEntry(n) != null) {
+							return true;
+						}
+					}
+				} catch (IOException ioe) {
+					throw new UncheckedIOException(ioe);
+				}
+			}
+		}
+		return false;
+	}
+
+	protected INI getLayers(File file) {
+		try {
+			if (file.isDirectory()) {
+				return createINIReader().build().read(new File(file, "layers.ini").toPath());
+			} else {
+				try (var jf = new JarFile(file)) {
+					var je = jf.getEntry("layers.ini");
+					if (je == null)
+						throw new IOException("No layers.ini in " + file);
+					try (var ji = jf.getInputStream(je)) {
+						return createINIReader().build().read(ji);
+					}
+				}
+			}
+		} catch (IOException ioe) {
+			throw new UncheckedIOException(ioe);
+		} catch (INIParseException e) {
+			throw new IllegalArgumentException("Failed to parse layers.ini.", e);
+		}
+	}
+
+	protected boolean isExtension(File resolvedFile) {
+		return new File(resolvedFile, "layers.ini").exists() || isArtifactContains(resolvedFile, "layers.ini");
+	}
+
+	protected List<Artifact> getExtensions(List<Artifact> artifacts) {
+		var l = new ArrayList<Artifact>();
+		for (var a : artifacts) {
+			if (!isExclude(a) && isExtension(a.getFile())) {
+				l.add(a);
+			}
+		}
+		return l;
+	}
+
+	protected void calcDependencyTypes(List<Artifact> artifacts, Set<String> inDependency,
+			ArrayList<Artifact> extensions) {
+		var log = getLog();
+
+		/*
+		 * We need to work out which artifacts are provided by other extensions, and to
+		 * do so without using mavens "provided" scope. This is because provided
+		 * prevents transitive dependencies being pulled in, meaning dependencies of
+		 * other extensions have to explicitly to be added. This gets very boring very
+		 * quickly.
+		 * 
+		 * There are two ways this is done.
+		 * 
+		 * Being as layers.ini is required anyway, we use that instead. We do this by
+		 * going through all the dependent artifacts, and inspect its layers.ini for any
+		 * dependencies and add them to a set.
+		 * 
+		 * We can also then check the Maven provider dependency trail. If the trail
+		 * contains any artifact we know is an extension, we can exclude that as well.
+		 * 
+		 * Then we build the zip, and include this projects artifact and any dependent
+		 * artifacts that are not in the set. Of course, we do not include any artifacts
+		 * the ARE extensions themselves, or any artifact that has a
+		 * META-INF/BOOTLACE.provided resource.
+		 */
+		extensions.addAll(getExtensions(artifacts));
+		for (var a : extensions) {
+			log.info("Adding  " + a + " as extension");
+			var layers = getLayers(a.getFile());
+			layers.sectionOr("artifacts").ifPresent(lyr -> {
+				for (var key : lyr.keys()) {
+					inDependency.add(String.join(":", Arrays.asList(key.split(":")).subList(0, 2)));
+				}
+			});
+		}
+
+		log.info("Dep trails ...");
+		for (var art : artifacts) {
+			if (isTransientDependencyOfExtension(art, extensions)) {
+				inDependency.add(makeKey(art));
+			}
+		}
+	}
+
+	protected boolean isTransientDependencyOfExtension(Artifact artifact, List<Artifact> extensions) {
+
+		if (artifact.equals(project.getArtifact())) {
+			return false;
+		}
+
+		var extensionsInTrail = new LinkedHashSet<Artifact>();
+
+		for (var dep : artifact.getDependencyTrail()) {
+			var gav = dep.split(":");
+			var frst = extensions.stream()
+					.filter(f -> f.getGroupId().equals(gav[0]) && f.getArtifactId().equals(gav[1])).findFirst();
+			if (frst.isPresent()) {
+				extensionsInTrail.add(artifact);
+			}
+		}
+
+		/*
+		 * If any artifact in the dependency trail is an extension, then its a match
+		 * except if the artifact is ONLY a transitive dependency of this project
+		 * extension, not of any others
+		 */
+		if (extensionsInTrail.isEmpty()) {
+			getLog().info("   " + artifact + " dependency trail  contains no extensions at all");
+			return false;
+		} else if (extensionsInTrail.size() == 1 && extensionsInTrail.iterator().next().equals(project.getArtifact())) {
+			getLog().info("   " + artifact + " should be included by its only a dependency of the project artifiact");
+			return false;
+		} else {
+			getLog().info("   " + artifact + " should be removed, its a transitive dependency");
+			return true;
+		}
+	}
+
 	private String toCoords(Artifact artifact) {
 		return artifact.getArtifactId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion()
 				+ (artifact.getClassifier() == null ? "" : ":" + artifact.getClassifier());
-	}
-
-	protected String getFileName(Artifact a, boolean includeVersion, boolean includeClassifier) {
-		return getFileName(a.getArtifactId(), getArtifactVersion(a, processSnapshotVersions), a.getClassifier(),
-				a.getType(), includeVersion, includeClassifier);
-	}
-
-	protected String getFileName(String artifactId, String version, String classifier, String type,
-			boolean includeVersion, boolean includeClassifier) {
-		StringBuilder fn = new StringBuilder();
-		fn.append(artifactId);
-		if (includeVersion) {
-			fn.append("-");
-			fn.append(version);
-		}
-		if (includeClassifier && classifier != null && classifier.length() > 0) {
-			fn.append("-");
-			fn.append(classifier);
-		}
-		fn.append(".");
-		fn.append(type);
-		return fn.toString();
 	}
 
 	protected Path checkDir(Path resolve) {
@@ -422,208 +564,6 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 		return layout;
 	}
 
-	protected void runIfNeedVersionProcessedArchive(Artifact artifact, Path target, IORunnable r, FileTime sourceTime)
-			throws IOException {
-		if (copyOncePerRuntime) {
-			var other = lastVersionProcessed.get(artifact);
-			if (other == null) {
-				lastVersionProcessed.put(artifact, target);
-				r.run();
-			} else {
-				getLog().debug(String.format(
-						"Skipping processing of %s, we have already processed it once this runtime, just linking from %s to %s.",
-						artifact, other, target));
-				Files.deleteIfExists(target);
-				Files.createSymbolicLink(target, other);
-			}
-			Files.setLastModifiedTime(target, FileTime.from(sourceTime.toInstant()));
-		} else {
-			r.run();
-			Files.setLastModifiedTime(target, FileTime.from(sourceTime.toInstant()));
-		}
-	}
-
-	protected void processVersionsInExtensionArchives(Artifact artifact, ZipInputStream zis, ZipOutputStream zos)
-			throws IOException {
-		if (processExtensionVersions && "extension-archive".equals(artifact.getClassifier())
-				&& "zip".equals(artifact.getType())) {
-			var counter = new AtomicInteger();
-			var zipEntry = zis.getNextEntry();
-			var log = getLog();
-			while (zipEntry != null) {
-				log.debug(String.format("  Zip entry: %s (dir: %s)", zipEntry.getName(), zipEntry.isDirectory()));
-				if (zipEntry.isDirectory()) {
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					zos.closeEntry();
-				} else if (zipEntry.getName().toLowerCase().endsWith(".jar") && isPotentialExtensions(getFilename(zipEntry.getName())) ) {
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					try (var in = new ZipInputStream(new FilterInputStream(zis) {
-						@Override
-						public void close() throws IOException {
-						}
-					}) ; var out = new ZipOutputStream(new FilterOutputStream(zos) {
-						@Override
-						public void close() throws IOException {
-						}
-					}) ) {
-						log.debug("    Process versions in inner jar artifact of " + artifact.getArtifactId() + " from " + zipEntry.getName());
-						processVersionsInJarFile(artifact, counter, in, out);
-						log.debug("    Processed versions in inner jar artifact of " + artifact.getArtifactId() + " from " + zipEntry.getName());
-					}
-					zos.closeEntry();
-				} else {
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					zis.transferTo(zos);
-					zos.closeEntry();
-					log.debug(String.format("    Copied %s.", zipEntry.getName()));
-				}
-
-				zipEntry = zis.getNextEntry();
-			}
-			zos.flush();
-			zis.closeEntry();
-
-			/* Re-pack the extension zip */
-			if (counter.get() == 0)
-				log.debug(String.format("No jars processed in %s", artifact));
-		}
-	}
-	
-	private String getFilename(String name) {
-		while(name.endsWith("/"))
-			name = name.substring(0, name.length() - 1);
-		int idx = name.lastIndexOf('/');
-		return idx == -1 ? name : name.substring(idx + 1);
-	}
-
-	protected boolean isPotentialExtensions(String name) {
-		if(name.startsWith("com.logonbox-") ||
-		   name.startsWith("com.hypersocket-") ||
-		   name.startsWith("com.sshtools-") ||
-		   name.startsWith("com.nervepoint-"))
-			return true;
-		else
-			return false;
-	}
-
-	public void processVersionsInJarFile(Artifact artifact, AtomicInteger counter, ZipInputStream zis,
-			ZipOutputStream zos) {
-		/*
-		 * We have something that is possibly an extension jar. So we peek inside, and
-		 * see if there is an extension.def resource.
-		 */
-		try {
-			String jarExtensionVersion = null;
-			String newJarExtensionVersion = null;
-			var zipEntry = zis.getNextEntry();
-			Log log = getLog();
-			while (zipEntry != null) {
-				log.debug(String.format("  Jar entry: %s (dir: %s)", zipEntry.getName(), zipEntry.isDirectory()));
-				if (zipEntry.isDirectory()) {
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					zos.closeEntry();
-				} else if (zipEntry.getName().equals("META-INF/MANIFEST.MF")) {
-					/* There is a MANIFEST.MF, is it a hypersocket extension? */
-					Manifest mf = new Manifest(zis);
-					jarExtensionVersion = mf.getMainAttributes().getValue("X-Extension-Version");
-					if (jarExtensionVersion != null) {
-
-						/* This is an extension, inject the build number */
-						newJarExtensionVersion = getVersion(true, jarExtensionVersion);
-						mf.getMainAttributes().putValue("X-Extension-Version", newJarExtensionVersion);
-						log.debug(String.format("    Adjusted version in %s from %s to %s.", zipEntry.getName(),
-								jarExtensionVersion, newJarExtensionVersion));
-
-					}
-					/* Rewrite the manifest */
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					mf.write(zos);
-					zos.closeEntry();
-				} else if (newJarExtensionVersion != null && zipEntry.getName().equals("plugin.properties")) {
-
-					/* Look for extension properties to update */
-					var pluginProperties = new Properties();
-					pluginProperties.load(zis);
-					pluginProperties.put("plugin.version", newJarExtensionVersion);
-					log.debug(String.format("    Adjusted version in %s from %s to %s.", zipEntry.getName(),
-							jarExtensionVersion, newJarExtensionVersion));
-
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					pluginProperties.store(zos, "Plugin Properties for " + artifact.getArtifactId());
-					zos.closeEntry();
-				} else if (newJarExtensionVersion != null && zipEntry.getName().equals("extension.def")) {
-
-					/* Look for extension def to update */
-					var extProperties = new Properties();
-					extProperties.load(zis);
-					extProperties.put("extension.version", newJarExtensionVersion);
-					log.debug(String.format("    Adjusted version in %s from %s to %s.", zipEntry.getName(),
-							jarExtensionVersion, newJarExtensionVersion));
-
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					extProperties.store(zos, "Extension Properties for " + artifact.getArtifactId());
-					zos.closeEntry();
-				} else if (newJarExtensionVersion != null
-						&& zipEntry.getName().matches("META-INF/maven/.*/pom\\.xml")) {
-					DocumentBuilderFactory docBuilderFactory = DocumentBuilderFactory.newInstance();
-					try {
-						DocumentBuilder docBuilder = docBuilderFactory.newDocumentBuilder();
-						Document doc = docBuilder.parse(new FilterInputStream(zis) {
-							@Override
-							public void close() throws IOException {
-								// DocumentBuilder.parse() is dumb, it closes the stream passed it
-							}
-						});
-						doc.getDocumentElement().getElementsByTagName("version").item(0)
-								.setTextContent(newJarExtensionVersion);
-
-						TransformerFactory transformerFactory = TransformerFactory.newInstance();
-						Transformer transformer = transformerFactory.newTransformer();
-						transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-						transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "4");
-						DOMSource source = new DOMSource(doc);
-						zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-						log.debug(String.format("    Adjusted version in %s from %s to %s.", zipEntry.getName(),
-								jarExtensionVersion, newJarExtensionVersion));
-						StreamResult result = new StreamResult(zos);
-						transformer.transform(source, result);
-						zos.closeEntry();
-					} catch (Exception ioe) {
-						throw new IllegalStateException("Failed to rewrite pom.properties");
-					}
-				} else if (newJarExtensionVersion != null
-						&& zipEntry.getName().matches("META-INF/maven/.*/pom\\.properties")) {
-					var properties = new Properties();
-					properties.load(zis);
-
-					log.debug(String.format("    Adjusted version in %s from %s to %s.", zipEntry.getName(),
-							jarExtensionVersion, newJarExtensionVersion));
-					properties.put("version", newJarExtensionVersion);
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					properties.store(zos, "Processed by logonbox-plugin-generator");
-					zos.closeEntry();
-				} else {
-					zos.putNextEntry(new ZipEntry(zipEntry.getName()));
-					zis.transferTo(zos);
-					zos.closeEntry();
-					log.debug(String.format("    Copied %s.", zipEntry.getName()));
-				}
-
-				zipEntry = zis.getNextEntry();
-			}
-			zis.closeEntry();
-			zos.flush();
-
-			if (newJarExtensionVersion == null) {
-				/* There is not, skip this one */
-				log.debug(String.format("Not an extension, %s has no MANIFEST.MF.", artifact));
-			}
-			return;
-		} catch (IOException ioe) {
-			throw new IllegalStateException("Failed to process extension archive jars.", ioe);
-		}
-	}
-
 	/**
 	 * @return {@link #skip}
 	 */
@@ -642,5 +582,14 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 		}
 
 		return destFile;
+	}
+
+	static INIReader.Builder createINIReader() {
+		return new INIReader.Builder().withMultiValueMode(MultiValueMode.SEPARATED)
+				.withDuplicateKeysAction(DuplicateAction.APPEND);
+	}
+
+	static INIWriter.Builder createINIWriter() {
+		return new INIWriter.Builder().withMultiValueMode(MultiValueMode.SEPARATED);
 	}
 }

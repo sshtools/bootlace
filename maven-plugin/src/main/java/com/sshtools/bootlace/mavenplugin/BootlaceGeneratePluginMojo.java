@@ -43,7 +43,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
@@ -60,7 +60,6 @@ import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
-import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResolverException;
 import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResult;
@@ -70,8 +69,6 @@ import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.inject.Description;
 
-import com.sshtools.jini.INI;
-
 /**
  * Generates a bootlace plugin from the current project
  */
@@ -80,16 +77,6 @@ import com.sshtools.jini.INI;
 public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 	protected static final String SEPARATOR = "/";
-	
-	/**
-	 * The maven project.
-	 * 
-	 * @parameter expression="${project}"
-	 * @required
-	 * @readonly
-	 */
-	@Parameter(required = true, readonly = true, property = "project")
-	protected MavenProject project;
 
 	@Parameter(defaultValue = "true", property = "attach")
 	private boolean attach = true;
@@ -106,10 +93,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 	protected void onExecute() throws MojoExecutionException, MojoFailureException {
 		var log = getLog();
-		if (skipPoms && "pom".equals(project.getPackaging())) {
-			log.info("Skipping POM project " + project.getName());
-			return;
-		}
 
 		log.info(project.getBasedir().getAbsolutePath());
 		log.info(project.getExecutionProject().getBasedir().getAbsolutePath());
@@ -156,8 +139,7 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 			Properties sourceProperties = new Properties();
 
-			var filteredList = project.getArtifacts().stream().filter(a -> !"provided".equals(a.getScope()) || provided).toList();
-			log.info("Adding " + filteredList.size() + " primary artifacts ");
+			var filteredList = getFilteredDependencies();
 
 			generateZip(sourceProperties, storeTarget, filteredList);
 
@@ -179,40 +161,20 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 		if(!isExtension(project.getArtifact().getFile())) {
 			throw new IllegalArgumentException("Project is not an extension, a layers.ini resource must exist.");
 		}
+
 		
-		
-		/* We need to work out which artifacts are provided by other extensions, and
-		 * to do so without using mavens "provided" scope. This is because provided
-		 * prevents transitive dependencies being pulled in, meaning dependencies of
-		 * other extensions have to explicitly to be added. This gets very boring
-		 * very quickly. Being as layers.ini is required anyway, we use that instead.
-		 * 
-		 * We do this by going through all the dependent artifacts, and
-		 * inspect its layers.ini for any dependencies and add them to a set. 
-		 * 
-		 * Then we build the zip, and include this projects artifact and any
-		 * dependent artifacts that are not in the set. Of course, we do not include
-		 * any artifacts the ARE extensions themselves, or any artifact that has a
-		 * META-INF/BOOTLACE.provided resource.
-		 */
+		Log log = getLog();
 		var inDependency = new HashSet<String>();
-		for(var a : artifacts) {
-			if (!isExclude(a) && isExtension(a.getFile())) {
-				var layers = getLayers(a.getFile());
-				layers.sectionOr("artifacts").ifPresent(lyr -> {
-					for(var key : lyr.keys()) {
-						inDependency.add(String.join(":", Arrays.asList(key.split(":")).subList(0,  2)));
-					}
-				});
-			}
-		}
+		var extensions = new ArrayList<Artifact>();
+		
+		calcDependencyTypes(artifacts, inDependency, extensions);
+		
 		try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(zipfile))) {
 
 			var art = project.getArtifact();
-			Log log = getLog();
 			log.info("Adding project artifact " + art.getFile().getName());
 
-			var e = new ZipEntry(getOutName(art));
+			var e = new ZipEntry(makeOutName(art));
 			zip.putNextEntry(e);
 
 			try (FileInputStream fin = new FileInputStream(art.getFile())) {
@@ -230,7 +192,7 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 				if(artifactKey.equals("com.sshtools:jini-lib")) {
 					/* TODO this is unfortunate. We need to find a way to hide this from child layers,
-					 *  or not use it at all so bootlacec-platform has zero dependencies
+					 *  or not use it at all so bootlace-platform has zero dependencies
 					 */
 					log.info("Artifact " + artifactKey + " is a bootlace-platform dependency, skipping");
 					continue;
@@ -262,6 +224,11 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 					log.info("Artifact " + artifactKey + " is an extension, not adding");
 					continue;
 				}
+				
+				if(!hasModuleInfo(resolvedFile) && !hasAutomaticModuleInfo(resolvedFile)) {
+					log.info("Artifact " + artifactKey + " is an unnamed module (no module-info and no Automatic-Module-Name), ensuring filename generates a module name");
+					outName = a.getArtifactId() + "." + a.getType();
+				}
 
 				log.info("Adding " + outName + " to plugin zip");
 
@@ -289,37 +256,16 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 		}
 	}
 
-	private INI getLayers(File file) {
-		if(file.isDirectory()) {
-			return INI.fromFile(new File(file, "layers.ini").toPath());
-		}
-		else {
-			try(var jf = new JarFile(file)) {
-				var je = jf.getEntry("layers.ini");
-				if(je == null)
-					throw new IOException("No layers.ini in " + file);
-				try(var ji = jf.getInputStream(je)) {
-					return INI.fromInput(ji);
-				}
-			}
-			catch(IOException ioe) {
-				throw new UncheckedIOException(ioe);
-			}
-		}
-	}
-
-	private boolean isExtension(File resolvedFile) {
-		return new File(resolvedFile, "layers.ini").exists() || isArtifactContains(resolvedFile, "layers.ini");
-	}
-
 	private boolean isExtensionOrBootlaceProvided(File resolvedFile) {
 		return isArtifactContains(resolvedFile, "layers.ini", "META-INF/BOOTLACE.provided");
 	}
 
-	private boolean isArtifactContains(File resolvedFile, String... entryNames) {
+	private boolean hasModuleInfo(File resolvedFile) {
 		try(var jf = new JarFile(resolvedFile)) {
-			for(var n : entryNames) {
-				if(jf.getEntry(n) != null) {
+			var en = jf.entries();
+			while(en.hasMoreElements()) {
+				var entry = en.nextElement();
+				if(entry.getName().equals("module-info.class") || entry.getName().endsWith("/module-info.class")) {
 					return true;
 				}
 			}
@@ -329,36 +275,35 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 			throw new UncheckedIOException(ioe);
 		}
 	}
+	
+	private boolean hasAutomaticModuleInfo(File resolvedFile) {
+		return getMetaAttribute(resolvedFile, null, "Automatic-Module-Name") != null;
+	}
 
-	private String getOutName(Artifact art) {
-		if (art.getClassifier() == null || art.getClassifier().length() == 0)
-			return art.getGroupId() + "-" + art.getArtifactId() + "-" + art.getVersion() + "." + art.getType();
-		else
-			return art.getGroupId() + "-" + art.getArtifactId() + "-" + art.getVersion() + "-" + art.getClassifier() + "." + art.getType();
+	private String getMetaAttribute(File resolvedFile,  String sec, String key) {
+		try(var jf = new JarFile(resolvedFile)) {
+			var mf = jf.getManifest();
+			if(mf != null) {
+				if(sec == null) {
+					return mf.getMainAttributes().getValue(key);
+				}
+				else {
+					var attrs = mf.getAttributes(sec);
+					if(attrs != null) {
+						return attrs.getValue(key);	
+					}
+				}
+			}
+			return null;
+		}
+		catch(IOException ioe) {
+			throw new UncheckedIOException(ioe);
+		}
 	}
 
 	@Override
 	protected void doHandleResult(ArtifactResult result)
 			throws MojoExecutionException, DependencyResolverException, ArtifactResolverException, IOException {
 		/* Only used for extra artifacts */
-	}
-
-	@Override
-	protected boolean isSnapshotVersionAsBuildNumber() {
-		return false;
-	}
-
-	public static String makeFilename(Artifact a) {
-		if(a.getClassifier() == null || a.getClassifier().equals(""))
-			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + "." + a.getType();
-		else
-			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + "." + a.getType();
-	}
-
-	public static String makeKey(Artifact a) {
-		if (a.getClassifier() == null || a.getClassifier().equals(""))
-			return a.getGroupId() + ":" + a.getArtifactId();
-		else
-			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getClassifier();
 	}
 }

@@ -340,6 +340,7 @@ public class DependencyGraph<M extends NodeModel<M>> implements Comparator<M> {
 			return upstream == downstream;
 		}
 
+		@SuppressWarnings("unchecked")
 		@Override
 		public boolean equals(Object obj) {
 			if (obj == null)

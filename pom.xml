@@ -47,6 +47,7 @@
         <module>api</module>
         <module>maven-plugin</module>
         <module>platform</module>
+        <module>spring</module>
     </modules>
     <organization>
         <name>JAdapative</name>
@@ -84,7 +85,7 @@
             <dependency>
                 <groupId>com.sshtools</groupId>
                 <artifactId>jini-lib</artifactId>
-                <version>0.4.0-SNAPSHOT</version>
+                <version>0.6.6</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

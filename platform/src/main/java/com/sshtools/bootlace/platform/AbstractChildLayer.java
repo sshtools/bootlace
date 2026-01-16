@@ -45,9 +45,9 @@ import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.RemoteRepository.RemoteRepositoryBuilder;
 import com.sshtools.bootlace.api.Repository;
 import com.sshtools.bootlace.api.Repository.RepositoryBuilder;
-import com.sshtools.bootlace.platform.jini.INI.Section;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.bootlace.api.RootLayer;
+import com.sshtools.bootlace.platform.jini.INI.Section;
 
 public abstract class AbstractChildLayer extends AbstractLayer implements ChildLayer {
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
@@ -70,7 +70,6 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 		@Override
 		protected B fromComponentSection(Section section) {
 			withParents(section.getAllOr("parent").orElse(new String[0]));
-			withParents(section.getAllOr("parents").orElse(new String[0]));
 			section.getOr("access").map(Access::valueOf).ifPresent(this::withAccess);
 			return super.fromComponentSection(section);
 		}
@@ -114,8 +113,8 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			this.rootLayer = null;
 		}
 		else {
-			this.rootLayer = Optional.of(rootLayer);
-			if(access().equals(Access.PUBLIC) && rootLayer.publicLayers.put(id(), this) != null) {
+			this.rootLayer = Optional.ofNullable(rootLayer);
+			if(access().equals(Access.PUBLIC) && rootLayer != null && rootLayer.publicLayers.put(id(), this) != null) {
 				throw new IllegalStateException(MessageFormat.format("More than one PUBLIC layer with the ID {0}", id()));
 			}
 		}
@@ -129,6 +128,17 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 				return lyr;
 		}
 		return ModuleLayer.boot();
+	}
+
+	@Override
+	public final ClassLoader loader() {
+		if(rootLayer != null && this.rootLayer.isPresent()) {
+			var lyr = ((RootLayerImpl)this.rootLayer.get()).moduleLoaders.get(id());
+			if(lyr != null) {
+				return lyr;
+			}
+		}
+		return ClassLoader.getSystemClassLoader();
 	}
 
 	@Override
@@ -303,17 +313,14 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 			rbldr.withSnapshots(def.releases().orElseGet(() -> def.snapshots().isEmpty()));
 			rbldr.withId(def.id());
 		}
-		else if(bldr instanceof AppRepositoryBuilder abldr) {
+		else if(bldr instanceof AppRepositoryBuilder) {
 			if(!def.id().equals(AppRepository.ID)) {
 				throw new IllegalStateException(MessageFormat.format("App repository `{0}` must have id of `{1}`", def.id(), AppRepository.ID));
 			}
-			def.pattern().ifPresent(abldr::withPattern);
 		}
-		else if(bldr instanceof LocalRepositoryBuilder lbldr) {
-			def.pattern().ifPresent(lbldr::withPattern);
-		}
-		else
+		else if(!(bldr instanceof LocalRepositoryBuilder)) {
 			throw new UnsupportedOperationException();
+		}
 		
 		return bldr.build();
 	}

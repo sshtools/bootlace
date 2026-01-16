@@ -22,8 +22,6 @@ package com.sshtools.bootlace.api;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.ServiceConfigurationError;
-import java.util.ServiceLoader;
 import java.util.Set;
 
 /**
@@ -66,10 +64,14 @@ public interface Layer {
 	Set<String> remoteRepositories();
 
 	Set<String> localRepositories();
+	
+	LayerType type();
 
 	default Optional<LayerArtifacts> finalArtifacts() {
 		return Optional.empty();
 	}
+	
+	ClassLoader loader();
 	
 	/**
 	 * The JPMS module layer for this bootlace layer.

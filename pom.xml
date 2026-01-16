@@ -48,6 +48,7 @@
         <module>maven-plugin</module>
         <module>platform</module>
         <module>spring</module>
+        <module>slf4j</module>
     </modules>
     <organization>
         <name>JAdapative</name>

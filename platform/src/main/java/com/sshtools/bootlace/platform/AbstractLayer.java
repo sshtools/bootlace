@@ -38,6 +38,7 @@ import java.util.Set;
 
 import com.sshtools.bootlace.api.AppRepository;
 import com.sshtools.bootlace.api.Layer;
+import com.sshtools.bootlace.api.LayerType;
 import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
@@ -60,6 +61,7 @@ abstract class AbstractLayer implements Layer {
 		Set<RepositoryDef> repositoryDefs = new LinkedHashSet<>();
 		Optional<ResolutionMonitor> monitor = Optional.empty();
 		Set<String> localRepositories = new LinkedHashSet<>();
+		LayerType type = LayerType.STATIC;
 
 		protected String id;
 		protected Optional<String> name = Optional.empty();
@@ -165,6 +167,12 @@ abstract class AbstractLayer implements Layer {
 			}
 		}
 
+		@SuppressWarnings("unchecked")
+		public final L withType(LayerType type) {
+			this.type = type;
+			return (L)this;
+		}
+
 		public final L withAppRepositories(Collection<String> repositories) {
 			this.appRepositories.clear();
 			return addAppRepositories(repositories);
@@ -230,6 +238,7 @@ abstract class AbstractLayer implements Layer {
 
 		@SuppressWarnings("unchecked")
 		protected L fromComponentSection(INI.Section section) {
+			withType(section.getEnum(LayerType.class, "type", LayerType.STATIC));
 			addLocalRepositories(section.getAllOr("local-repository").orElse(new String[0]));
 			addLocalRepositories(section.getAllOr("local-repositories").orElse(new String[0]));
 			addAppRepositories(section.getAllOr("app-repository").orElse(new String[0]));
@@ -247,8 +256,7 @@ abstract class AbstractLayer implements Layer {
 					sec.getOr("name").orElseGet(() -> sec.key()), 
 					sec.getOr("root").map(URI::create).orElseThrow(()-> new IllegalArgumentException("No 'root' in repository def section.")),
 					sec.getBooleanOr("releases"), 
-					sec.getBooleanOr("snapshots"),
-					sec.getOr("pattern")
+					sec.getBooleanOr("snapshots")
 			);
 		}
 
@@ -272,10 +280,12 @@ abstract class AbstractLayer implements Layer {
 	private final Optional<ResolutionMonitor> monitor;
 	private final String id;
 	private final Optional<String> name;
+	private final LayerType type;
 	
 
 	protected AbstractLayer(AbstractLayerBuilder<?> builder) {
 		this.id = builder.id;
+		this.type = builder.type;
 		this.name = builder.name;
 		this.appRepositories = new LinkedHashSet<>(builder.appRepositories); 
 		this.remoteRepositories = new LinkedHashSet<>(builder.remoteRepositories);
@@ -302,6 +312,11 @@ abstract class AbstractLayer implements Layer {
 	@Override
 	public final String id() {
 		return id;
+	}
+
+	@Override
+	public final LayerType type() {
+		return type;
 	}
 
 	@Override

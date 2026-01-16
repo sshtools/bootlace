@@ -31,8 +31,6 @@ public interface AppRepository extends Repository {
 		
 		AppRepositoryBuilder withRoot(Path root);
 
-		AppRepositoryBuilder withPattern(String pattern);
-
 		@Override
 		AppRepository build();
 	}

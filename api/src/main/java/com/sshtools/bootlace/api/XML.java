@@ -90,6 +90,11 @@ public class XML {
 		}
 		return l;
 	}
+	
+	@Override
+	public String toString() {
+		return element().getTextContent();
+	}
 
 	public Optional<String> value(String tagName) {
 		var itms = byTagName(tagName);

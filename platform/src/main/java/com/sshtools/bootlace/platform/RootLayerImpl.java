@@ -27,6 +27,7 @@ import java.io.UncheckedIOException;
 import java.lang.module.Configuration;
 import java.lang.module.ModuleFinder;
 import java.net.URL;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -56,6 +57,7 @@ import com.sshtools.bootlace.api.Collect;
 import com.sshtools.bootlace.api.DependencyGraph;
 import com.sshtools.bootlace.api.DependencyGraph.Dependency;
 import com.sshtools.bootlace.api.Exceptions;
+import com.sshtools.bootlace.api.FilteredClassLoader;
 import com.sshtools.bootlace.api.GAV;
 import com.sshtools.bootlace.api.Http;
 import com.sshtools.bootlace.api.Http.HttpClientFactory;
@@ -266,6 +268,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	private final Optional<PluginInitializer> pluginInitializer;
 	private final Optional<PluginDestroyer> pluginDestroyer;
 	protected final Map<String, ModuleLayer> moduleLayers = new ConcurrentHashMap<>();
+	protected final Map<String, ClassLoader> moduleLoaders = new ConcurrentHashMap<>();
 
 	private boolean initialising;
 	private ClassLoader rootLoader;
@@ -287,9 +290,8 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		layers.forEach((k, v) -> ((AbstractChildLayer) v).rootLayer(this));
 		LOG.debug("Attached root layer to child layers");
 
-//		rootLoader = new FilteredClassLoader.Builder(ClassLoader.getSystemClassLoader()).
-//				build();
-		rootLoader  = ClassLoader.getSystemClassLoader();
+		rootLoader = new FilteredClassLoader.Builder(ClassLoader.getSystemClassLoader()).
+				build();
 		
 		sem.tryAcquire();
 		app = builder.appContext;
@@ -338,6 +340,11 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		return  layers.values().stream().
 				filter(l -> l.parents().isEmpty()).
 				toList();
+	}
+
+	@Override
+	public ClassLoader loader() {
+		return rootLoader;
 	}
 
 	@Override
@@ -401,7 +408,11 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	}
 	
 	Optional<ChildLayer> getLayerOr(String id) {
-		return Optional.ofNullable(layers.get(id));
+		var l = layers.get(id);
+		if(l == null) {
+			l = tempLayers.get(id);
+		}
+		return Optional.ofNullable(l);
 	}
 
 	void afterOpen(ChildLayer child) {
@@ -413,7 +424,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 					var plugin = ref.plugin(); 
 					LOG.info("    {0}", plugin.getClass().getName());
 					PluginContextProviderImpl.current.set(ref.context());
-					runWithLoader(plugin.getClass(), () -> {
+					runWithLoader(child.loader(), () -> {
 						try {
 							plugin.afterOpen(ref.context());
 						}	
@@ -446,7 +457,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 				var pchild = (PluginLayerImpl)layer;
 				try {
 					pchild.pluginRefs.forEach(ref -> {
-						runWithLoader(ref.plugin().getClass(), () -> {
+						runWithLoader(pchild.loader(), () -> {
 							PluginContextProviderImpl.current.set(ref.context());
 							try {
 								ref.plugin().beforeClose(ref.context());
@@ -469,7 +480,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 					}
 					finally {
 						pchild.pluginRefs.forEach(ref -> {
-							runWithLoader(ref.plugin().getClass(), () -> {
+							runWithLoader(pchild.loader(), () -> {
 								PluginContextProviderImpl.current.set(ref.context());
 								try {
 									ref.plugin().close();
@@ -502,6 +513,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 	void close(ChildLayer layer) {
 		LayerContextImpl.deregister(layer.id(), moduleLayers.remove(layer.id()));
+		moduleLoaders.remove(layer.id());
 	}
 
 	void open(ChildLayer layerDef) {
@@ -544,7 +556,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			LOG.info("Initialising plugins in layer `{0}`", id);
 			pluginLayerDef.pluginRefs.forEach(ref -> { 
 				LOG.info("    {0}", ref.plugin().getClass().getName());
-				runWithLoader(ref.plugin().getClass(), () -> { 
+				runWithLoader(layerDef.loader(), () -> { 
 					PluginContextProviderImpl.current.set(ref.context());
 					try {
 						ref.plugin().open(ref.context());
@@ -578,10 +590,8 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	
 	private ModuleLayer createAndRegisterLoader(ChildLayer layerDef, Set<Path> paths, Set<ModuleLayer> parents) {
 
-//		var childLayerLoader = new FilteredClassLoader.Builder(rootLoader).
-//				build();
-		
-		var childLayerLoader = rootLoader;
+		var childLayerLoader = new FilteredClassLoader.Builder(rootLoader).
+				build();
 		
 		var layer = createModuleLayer(layerDef.id(), parents, paths, childLayerLoader);
 		var modules = layer.modules();
@@ -590,10 +600,12 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		if (modules.isEmpty()) {
 			childLoader = childLayerLoader;
 		} else {
+			/* We use defineModulesWithOneLoader so there will only be one  anyway */
 			childLoader = layer.findLoader(modules.iterator().next().getName());
 		}
 		
 		moduleLayers.put(layerDef.id(), layer);
+		moduleLoaders.put(layerDef.id(), childLoader);
 		
 		LayerContextImpl.register(layer, layerDef, childLoader);
 
@@ -602,7 +614,31 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 	private ModuleLayer createModuleLayer(String layerId, Set<ModuleLayer> parentLayers, Set<Path> modulePathEntries, ClassLoader loader) {
 	
-		var finder = ModuleFinder.of(modulePathEntries.toArray(Path[]::new));
+		/* Sort the module paths so that directories come last, and also
+		 * canonicalize the paths. JPMS doesn't seem to liked directories that
+		 * are symlinks, so we need to get the actual paths.
+		 */
+		var finder = ModuleFinder.of(modulePathEntries.stream().sorted((p1, p2) -> {
+			var d1 = Files.isDirectory(p1) ? 1 : -1;
+			var d2 = Files.isDirectory(p2) ? 1 : -1;
+			var o = Integer.valueOf(d1).compareTo(d2);
+			if(o == 0) {
+				return p1.compareTo(p2);
+			}
+			else {
+				return o;
+			}
+		}).map(Path::toAbsolutePath).map(p -> {
+			try {
+				return p.toRealPath();
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+		}).toList().toArray(Path[]::new));
+		
+		/* Create a module layer with  a single class loader that includes
+		 * all the modules in this layer
+		 */
 
 		var roots = finder.findAll().stream().map(m -> m.descriptor().name()).
 				collect(Collectors.toSet());
@@ -625,7 +661,6 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		private final List<JPMSNode> list;
 		
 		private JPMSPlugins(ModuleLayer layer) {
-
 			 list = ServiceLoader.load(layer, Plugin.class).
 					 stream().
 					 map(p -> new JPMSNode(p, this)).

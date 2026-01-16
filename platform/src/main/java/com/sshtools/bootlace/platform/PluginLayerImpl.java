@@ -44,6 +44,7 @@ import com.sshtools.bootlace.api.PluginLayer;
 import com.sshtools.bootlace.api.PluginRef;
 import com.sshtools.bootlace.api.Zip;
 import com.sshtools.bootlace.platform.jini.INI.Section;
+import com.sshtools.bootlace.platform.jini.INIParseException;
 
 public final class PluginLayerImpl extends AbstractChildLayer implements PluginLayer {
 	public final static class Builder extends AbstractChildLayerBuilder<PluginLayerImpl.Builder> {
@@ -68,11 +69,18 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 			return super.fromDescriptor(descriptor);
 		}
 
-		public PluginLayerImpl.Builder withJarArtifactsDirectory(Path dir) {
+		public PluginLayerImpl.Builder withArtifactsDirectory(Path dir) {
 			try (var str = Files.newDirectoryStream(dir,
-						f -> f.getFileName().toString().toLowerCase().endsWith(".jar"))) {
-				for (var jar : str) {
-					withJarArtifacts(jar);
+						f -> ( !Files.isDirectory(f) && f.getFileName().toString().toLowerCase().endsWith(".jar")) || 
+							 (  Files.isDirectory(f) && f.getFileName().toString().equals("classes")))) {
+				
+				for (var path : str) {
+					if(Files.isDirectory(path)) {
+						withArtifactRefs(ArtifactRef.of(GAV.ofSpec(getArtifactFromLayersINI(path))).withPath(path));						
+					}
+					else {
+						withJarArtifacts(path);
+					}
 				}
 			} catch (IOException ioe) {
 				throw new UncheckedIOException(ioe);
@@ -133,6 +141,19 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 
 		private ArtifactRef refFromFilename(Path props) {
 			return ArtifactRef.of(GAV.ofSpec(props.getFileName().toString()));
+		}
+		
+		private String getArtifactFromLayersINI(Path path) throws IOException {
+			var dir = path.resolve("META-INF").resolve("layers.ini");
+			if(Files.exists(dir)) {
+				try {
+					var ini = Bootlace.createINIReader().build().read(dir);
+					return ini.obtainSection("meta").get("artifact");
+				} catch (INIParseException e) {
+					throw new IllegalArgumentException("Failed to parse .ini.", e);
+				} 
+			}
+			throw new IOException("Not an extension maven artifact (no layers.ini).");
 		}
 
 		private Properties getMavenPropertiesForArtifact(InputStream in) throws IOException {
@@ -231,6 +252,12 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 		return "PluginLayer [id()=" + id() + ", name()=" + name() + ", parents()="
 				+ parents() + ", appRepositories()=" + appRepositories() + ", localRepositories()="
 				+ localRepositories() + ", remoteRepositories()=" + remoteRepositories() + ", artifacts=" + artifacts + "]";
+	}
+
+	void addParent(PluginLayerImpl layer) {
+		// TODO Auto-generated method stub
+		throw new UnsupportedOperationException("TODO");
+		
 	}
 
 }

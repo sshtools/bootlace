@@ -27,7 +27,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -51,6 +50,7 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
+import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
 import org.apache.maven.shared.transfer.artifact.ArtifactCoordinate;
 import org.apache.maven.shared.transfer.artifact.DefaultArtifactCoordinate;
@@ -88,8 +88,6 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 
 	@Parameter(defaultValue = "true", property = "provided")
 	protected boolean provided = false;
-
-	static Map<Artifact, Path> lastVersionProcessed = new HashMap<>();
 
 	/**
 	 *
@@ -138,9 +136,7 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	 */
 	@Parameter(property = "bootlace.excludeClassifiers")
 	protected List<String> excludeClassifiers;
-	@Parameter(property = "bootlace.copyOncePerRuntime", defaultValue = "true")
-	protected boolean copyOncePerRuntime = true;
-
+	
 	/**
 	 * Which groups can contain extensions. This can massively speed up dependency
 	 * by not needlessly contacting a Maven repository to determine if an artifact
@@ -157,20 +153,6 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	 */
 	@Parameter(defaultValue = "${project.build.directory}", property = "bootlace.output", required = true)
 	protected File output;
-
-	/**
-	 * Skip plugin execution completely.
-	 *
-	 * @since 2.7
-	 */
-	@Parameter(property = "extensions.skip", defaultValue = "false")
-	protected boolean skip;
-
-	@Parameter(defaultValue = "true")
-	protected boolean includeVersion;
-
-	@Parameter(defaultValue = "true")
-	protected boolean processSnapshotVersions;
 
 	/**
 	 * Download transitively, retrieving the specified artifact and all of its
@@ -198,8 +180,12 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	@Parameter(property = "extensions.checksumPolicy")
 	private String checksumPolicy;
 
-	@Parameter(defaultValue = "true")
-	protected boolean processExtensionVersions;
+	/**
+	 * Additional artifacts to add to the plugin. A string of the form
+	 * groupId:artifactId[:version[:packaging[:classifier]]].
+	 */
+	@Parameter(property = "bootlace.exclude")
+	private List<String> excludes;
 
 	protected Set<String> artifactsDone = new HashSet<>();
 
@@ -237,7 +223,7 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 		String id = toCoords(artifact);
 
 		if (isExclude(artifact)) {
-			getLog().info(String.format("Skipping %s because it's classifier is excluded.", id));
+			getLog().info(String.format("Skipping %s because it is excluded.", id));
 			return;
 		}
 
@@ -252,7 +238,19 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 		}
 	}
 
+	protected boolean isExtensionOrBootlaceProvided(File resolvedFile) {
+		return isArtifactContains(resolvedFile, "META-INF/layers.ini", "META-INF/BOOTLACE.provided");
+	}
+	
+	protected boolean isBootlaceProvided(File resolvedFile) {
+		return isArtifactContains(resolvedFile, "META-INF/BOOTLACE.provided");
+	}
+
 	protected ArrayList<Artifact> getFilteredDependencies() {
+		return getFilteredDependencies(this.project);
+	}
+
+	protected ArrayList<Artifact> getFilteredDependencies(MavenProject project) {
 		var filteredList = new ArrayList<>(
 				project.getArtifacts().stream().filter(a -> !"provided".equals(a.getScope()) || provided).toList());
 		getLog().info("Adding " + filteredList.size() + " primary artifacts ");
@@ -260,8 +258,29 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	}
 
 	protected boolean isExclude(Artifact artifact) {
-		return artifact != null && artifact.getClassifier() != null && artifact.getClassifier().length() > 0
-				&& excludeClassifiers != null && excludeClassifiers.contains(artifact.getClassifier());
+		if(artifact != null) {
+			if(artifact.getClassifier() != null && artifact.getClassifier().length() > 0
+					&& excludeClassifiers != null && excludeClassifiers.contains(artifact.getClassifier())) {
+				return true;
+			}
+			
+			for(var spec : excludes) {
+				var arr = spec.split(":");
+				getLog().debug("Comparing " + artifact + " to " + String.join(", ", arr));
+				if( 
+					( arr[0].equals("") || arr[0].equals( artifact.getGroupId() ) ) &&
+					( arr.length < 2 || ( arr.length > 1 && ( arr[1].equals("") || arr[1].equals(artifact.getArtifactId() ) ) ) ) &&
+					( arr.length < 3 || ( arr.length > 2 && ( arr[2].equals("") || arr[2].equals(artifact.getVersion() ) ) ) ) &&
+					( arr.length < 4 || ( arr.length > 3 && ( arr[3].equals("") || arr[3].equals(artifact.getType() ) ) ) ) &&
+					( arr.length < 5 || ( arr.length > 4 && ( arr[4].equals("") || arr[4].equals(artifact.getClassifier() ) ) ) )
+				) {
+					getLog().debug("   Match!");
+					return true;
+				}
+			}
+			
+		}
+		return false;
 	}
 
 	protected boolean isProcessedGroup(Artifact artifact) {
@@ -277,25 +296,7 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	protected void doCoordinate() throws MojoFailureException, MojoExecutionException, IllegalArgumentException,
 			DependencyResolverException, ArtifactResolverException {
 
-		var always = new ArtifactRepositoryPolicy(true,
-				updatePolicy == null ? ArtifactRepositoryPolicy.UPDATE_POLICY_INTERVAL + ":60" : updatePolicy,
-				checksumPolicy == null ? ArtifactRepositoryPolicy.CHECKSUM_POLICY_IGNORE : checksumPolicy);
-//		ArtifactRepositoryPolicy always = new ArtifactRepositoryPolicy(true,
-//				updatePolicy == null ? ArtifactRepositoryPolicy.UPDATE_POLICY_NEVER : updatePolicy,
-//				checksumPolicy == null ? ArtifactRepositoryPolicy.CHECKSUM_POLICY_IGNORE : checksumPolicy);
-		var repoList = new ArrayList<ArtifactRepository>();
-
-		if (pomRemoteRepositories != null && useRemoteRepositories) {
-			repoList.addAll(pomRemoteRepositories);
-		}
-
-		if (remoteRepositories != null) {
-			// Use the same format as in the deploy plugin id::layout::url
-			String[] repos = StringUtils.split(remoteRepositories, ",");
-			for (String repo : repos) {
-				repoList.add(parseRepository(repo, always));
-			}
-		}
+		var repoList = getRepositories();
 
 		var buildingRequest = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
 
@@ -342,11 +343,34 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 
 	}
 
+	protected List<ArtifactRepository> getRepositories() throws MojoFailureException {
+		var always = new ArtifactRepositoryPolicy(true,
+				updatePolicy == null ? ArtifactRepositoryPolicy.UPDATE_POLICY_INTERVAL + ":60" : updatePolicy,
+				checksumPolicy == null ? ArtifactRepositoryPolicy.CHECKSUM_POLICY_IGNORE : checksumPolicy);
+//		ArtifactRepositoryPolicy always = new ArtifactRepositoryPolicy(true,
+//				updatePolicy == null ? ArtifactRepositoryPolicy.UPDATE_POLICY_NEVER : updatePolicy,
+//				checksumPolicy == null ? ArtifactRepositoryPolicy.CHECKSUM_POLICY_IGNORE : checksumPolicy);
+		var repoList = new ArrayList<ArtifactRepository>();
+
+		if (pomRemoteRepositories != null && useRemoteRepositories) {
+			repoList.addAll(pomRemoteRepositories);
+		}
+
+		if (remoteRepositories != null) {
+			// Use the same format as in the deploy plugin id::layout::url
+			String[] repos = StringUtils.split(remoteRepositories, ",");
+			for (String repo : repos) {
+				repoList.add(parseRepository(repo, always));
+			}
+		}
+		return repoList;
+	}
+
 	protected boolean isArtifactContains(File resolvedFile, String... entryNames) {
 		if (resolvedFile.exists()) {
 			if(resolvedFile.isDirectory()) {
 				for (var n : entryNames) {
-					if (new File(resolvedFile, n).exists()) {
+					if (new File(resolvedFile, n.replace('/', File.separatorChar)).exists()) {
 						return true;
 					}
 				}
@@ -369,10 +393,10 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	protected INI getLayers(File file) {
 		try {
 			if (file.isDirectory()) {
-				return createINIReader().build().read(new File(file, "layers.ini").toPath());
+				return createINIReader().build().read(new File(file, "META-INF" + File.separator + "layers.ini").toPath());
 			} else {
 				try (var jf = new JarFile(file)) {
-					var je = jf.getEntry("layers.ini");
+					var je = jf.getEntry("META-INF/layers.ini");
 					if (je == null)
 						throw new IOException("No layers.ini in " + file);
 					try (var ji = jf.getInputStream(je)) {
@@ -388,7 +412,7 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	}
 
 	protected boolean isExtension(File resolvedFile) {
-		return new File(resolvedFile, "layers.ini").exists() || isArtifactContains(resolvedFile, "layers.ini");
+		return new File(resolvedFile, "META-INF" + File.separator + "layers.ini").exists() || isArtifactContains(resolvedFile, "META-INF/layers.ini");
 	}
 
 	protected List<Artifact> getExtensions(List<Artifact> artifacts) {
@@ -585,11 +609,15 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	}
 
 	static INIReader.Builder createINIReader() {
-		return new INIReader.Builder().withMultiValueMode(MultiValueMode.SEPARATED)
-				.withDuplicateKeysAction(DuplicateAction.APPEND);
+		return new INIReader.Builder().
+				withMultiValueMode(MultiValueMode.SEPARATED).
+				withSectionPathSeparator('/').
+				withDuplicateKeysAction(DuplicateAction.APPEND);
 	}
 
 	static INIWriter.Builder createINIWriter() {
-		return new INIWriter.Builder().withMultiValueMode(MultiValueMode.SEPARATED);
+		return new INIWriter.Builder().
+				withSectionPathSeparator('/').
+				withMultiValueMode(MultiValueMode.SEPARATED);
 	}
 }

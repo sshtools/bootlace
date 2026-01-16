@@ -43,7 +43,6 @@ public class AppRepositoryImpl extends LocalRepositoryImpl implements AppReposit
 		private Path root = Paths.get(AppRepository.ID);
 
 		private String name = "App Repository";
-		private String pattern = System.getProperty("bootlace.app.pattern", "%G/%a/%v/%a-%v.jar");
 
 		@Override
 		public AppRepositoryBuilder withName(String name) {
@@ -51,12 +50,6 @@ public class AppRepositoryImpl extends LocalRepositoryImpl implements AppReposit
 			return this;
 		}
 		
-		@Override
-		public AppRepositoryBuilder withPattern(String pattern) {
-			this.pattern = pattern;
-			return this;
-		}
-
 		@Override
 		public AppRepositoryBuilder withRoot(String root) {
 			return withRoot(Paths.get(root));
@@ -75,7 +68,7 @@ public class AppRepositoryImpl extends LocalRepositoryImpl implements AppReposit
 	}
 
 	private AppRepositoryImpl(AppRepositoryBuilder builder) {
-		super(builder.root, builder.name, AppRepository.ID, builder.pattern);
+		super(builder.root, builder.name, AppRepository.ID);
 	}
 
 	@Override

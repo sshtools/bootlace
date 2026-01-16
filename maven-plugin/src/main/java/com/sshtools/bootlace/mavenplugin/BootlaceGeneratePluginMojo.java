@@ -190,14 +190,15 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 				File resolvedFile = null;
 				String outName = null;
 
-				if(artifactKey.equals("com.sshtools:jini-lib")) {
-					/* TODO this is unfortunate. We need to find a way to hide this from child layers,
-					 *  or not use it at all so bootlace-platform has zero dependencies
-					 */
-					log.info("Artifact " + artifactKey + " is a bootlace-platform dependency, skipping");
-					continue;
-				}
-				else if(inDependency.contains(artifactKey)) {
+//				if(artifactKey.equals("com.sshtools:jini-lib")) {
+//					/* TODO this is unfortunate. We need to find a way to hide this from child layers,
+//					 *  or not use it at all so bootlace-platform has zero dependencies
+//					 */
+//					log.info("Artifact " + artifactKey + " is a bootlace-platform dependency, skipping");
+//					continue;
+//				}
+//				else 
+					if(inDependency.contains(artifactKey)) {
 					log.info("Artifact " + artifactKey + " is provided as a dependency of an a extension");
 					continue;
 				}
@@ -254,10 +255,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 			}
 
 		}
-	}
-
-	private boolean isExtensionOrBootlaceProvided(File resolvedFile) {
-		return isArtifactContains(resolvedFile, "layers.ini", "META-INF/BOOTLACE.provided");
 	}
 
 	private boolean hasModuleInfo(File resolvedFile) {

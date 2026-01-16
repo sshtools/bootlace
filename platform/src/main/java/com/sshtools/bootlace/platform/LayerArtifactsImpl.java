@@ -238,9 +238,8 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 			LOG.debug("App repositories for `{0}` now `{1}`", descriptor.id(), String.join(", ", pluginLayerDef.appRepositories));
 		}
 		
-		pluginLayerDef.parents.addAll(Stream.concat(
-				Arrays.asList(section.getAllOr("parent").orElse(new String[0])).stream(),
-				Arrays.asList(section.getAllOr("parents").orElse(new String[0])).stream()).toList());
+		pluginLayerDef.parents.addAll(
+				Arrays.asList(section.getAllOr("parent").orElse(new String[0])).stream().toList());
 		
 		if(LOG.debug()) {
 			LOG.debug("Parents for `{0}` now `{1}`", descriptor.id(), String.join(", ", pluginLayerDef.parents));
@@ -324,7 +323,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 						var path = Paths.get(uri);
 						if (Files.exists(path)) {
 							found = true;
-							LOG.debug("Found {0} @ {1}", gav, uri);
+							LOG.info("Found {0} @ {1}", gav, uri);
 							monitor.ifPresent(m -> m.have(gav, path.toUri(), local));
 							return path;
 						}
@@ -350,7 +349,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 						if (Files.exists(path)) {
 							/* Have in app repository */
 							var uri = path.toUri();
-							LOG.debug("Found {0} @ {1}", gav, uri);
+							LOG.info("Found {0} @ {1}", gav, uri);
 							monitor.ifPresent(m -> m.have(gav, uri, appRepository));
 							return path;
 						} else {
@@ -364,7 +363,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	
 									path = Paths.get(uri);
 									if (Files.exists(path)) {
-										LOG.debug("Found {0} @ {1}", gav, uri);
+										LOG.info("Found {0} @ {1}", gav, uri);
 										found = true;
 										var uri2 = path.toUri();
 										monitor.ifPresent(m -> m.have(gav, uri2, local));

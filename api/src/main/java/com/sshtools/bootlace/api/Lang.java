@@ -4,8 +4,12 @@ import java.util.concurrent.Callable;
 
 public class Lang {
 
+	public static void runWithoutLoader(Runnable r) {
+		runWithLoader((Class<?>)null, r);
+	}
+
 	public static void runWithLoader(Class<?> clazz, Runnable r) {
-		runWithLoader(clazz.getClassLoader(), r);
+		runWithLoader(clazz == null ? (ClassLoader)null : clazz.getClassLoader(), r);
 	}
 
 	public static void runWithLoader(ClassLoader loader, Runnable r) {
@@ -20,7 +24,7 @@ public class Lang {
 	}
 	
 	public static <V> V callWithLoader(Class<?> clazz, Callable<V> r) throws Exception {
-		return callWithLoader(clazz.getClassLoader(), r);
+		return callWithLoader(clazz == null? null : clazz.getClassLoader(), r);
 	}
 	
 	public static <V> V callWithLoader(ClassLoader loader, Callable<V> r) throws Exception {

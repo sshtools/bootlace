@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Optional;
 
 import com.sshtools.bootlace.api.Exceptions;
+import com.sshtools.bootlace.api.LayerType;
 import com.sshtools.bootlace.api.Zip;
 import com.sshtools.bootlace.platform.jini.INI;
 import com.sshtools.bootlace.platform.jini.INI.Section;
@@ -93,7 +94,7 @@ public final class Descriptor {
 		}
 	}
 
-	public static final String DESCRIPTOR_RESOURCE_NAME = "layers.ini";
+	public static final String DESCRIPTOR_RESOURCE_NAME = "META-INF/layers.ini";
 
 	private final Section component;
 	private final String id;
@@ -101,12 +102,14 @@ public final class Descriptor {
 	private final Optional<Section> artifacts;
 	private final Optional<Section> repositories;
 	private final Optional<Section> meta;
+	private final LayerType type;
 
 	private Descriptor(Builder bldr) {
 		component = bldr.ini.section("component");
 		artifacts = bldr.ini.sectionOr("artifacts");
 		meta = bldr.ini.sectionOr("meta");
 		id = component.get("id");
+		type = component.getEnum(LayerType.class, "type", LayerType.STATIC);
 		children = Arrays.asList(bldr.ini.sectionOr("layer").map(l -> l.allSections()).orElse(new Section[0]));
 		repositories = bldr.ini.sectionOr("repository");
 	}
@@ -121,6 +124,10 @@ public final class Descriptor {
 
 	public String id() {
 		return id;
+	}
+
+	public LayerType type() {
+		return type;
 	}
 	
 	public Optional<Section> repositories() {

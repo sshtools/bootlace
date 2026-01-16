@@ -18,39 +18,14 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package com.sshtools.bootlace.api;
 
-import java.io.File;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import org.slf4j.spi.SLF4JServiceProvider;
 
-public interface LocalRepository extends Repository {
+import com.sshtools.bootlace.slf4j.BootlaceServiceProvider;
 
-	public interface LocalRepositoryBuilder extends Repository.RepositoryBuilder<LocalRepositoryBuilder, LocalRepository> {
-
-		LocalRepositoryBuilder withRoot(Path root);
-
-		LocalRepository build();
-	}
+module com.sshtools.bootlace.slf4j {
+	requires transitive org.slf4j;
+	exports com.sshtools.bootlace.slf4j;
 	
-	static Path gavPath(GAV gav) {
-		var path = Paths.get(dottedToPath(gav.groupId())).resolve(gav.artifactId());
-		if(gav.hasVersion()) {
-			if(gav.hasClassifier()) {
-				return path.resolve(gav.version()).resolve(gav.artifactId() + "-" +  gav.version() + "-" + gav.classifier() + ".jar");
-			}
-			else {
-				return path.resolve(gav.version()).resolve(gav.artifactId() + "-" +  gav.version() + ".jar");
-			}
-		}
-		else {
-			return path;
-		} 
-	}
-
-	static String dottedToPath(String dotted) {
-		return dotted.replace('.', File.separatorChar);
-	}
-
-	String ID = "local";
+	provides SLF4JServiceProvider with BootlaceServiceProvider;
 }

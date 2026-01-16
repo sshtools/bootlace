@@ -50,27 +50,20 @@ public final class BootstrapRepository implements LocalRepository {
 	}
 	
 	public final static Path m2Local() {
-		return Paths.get(System.getProperty("user.home")).
-				resolve(".m2").
-				resolve("repository");
+		return Paths.get(System.getProperty("bootlace.bootstrap.m2",
+				System.getProperty("user.home") + File.separator + ".m2" + File.separator + "repository"));
 	}
 	
 	public final static class BootstrapRepositoryBuilder implements Repository.RepositoryBuilder<BootstrapRepositoryBuilder, BootstrapRepository> {
 		
 		private Set<Path> roots = new LinkedHashSet<>(); 
 		private String name = "Bootstrap";
-		private String pattern = System.getProperty("bootlace.bootstrap.pattern", "%G/%a/%v/%a-%v.jar");
 		
 		@Override
 		public BootstrapRepository build() {
 			return new BootstrapRepository(this);
 		}
 
-		public BootstrapRepositoryBuilder withPattern(String pattern) {
-			this.pattern = pattern;
-			return this;
-		}
-		
 		public BootstrapRepositoryBuilder withName(String name) {
 			this.name = name;
 			return this;
@@ -91,14 +84,12 @@ public final class BootstrapRepository implements LocalRepository {
 	}
 	
 	private final String name;
-	private final String pattern;
 	private Set<Path> roots;
 
 
 	private BootstrapRepository(BootstrapRepositoryBuilder bldr) {
 		this.name = bldr.name;
 		this.roots = bldr.roots;
-		this.pattern = bldr.pattern;
 	}
 
 	@Override
@@ -135,12 +126,12 @@ public final class BootstrapRepository implements LocalRepository {
 				return Optional.of(ResolutionResult.of(bootstrap.toUri()));
 			}
 	
-			if(gav.groupIdOr().isPresent()) {
-				var m2 = Paths.get(System.getProperty("bootlace.bootstrap.m2",
-						System.getProperty("user.home") + File.separator + ".m2" + File.separator + "repository"));
-				if (Files.exists(m2))
-					return Optional.of(ResolutionResult.of(resolveGav(m2, gav).toUri()));
-			}
+//			if(gav.groupIdOr().isPresent()) {
+//				var m2 = m2Local();
+//				if (Files.exists(m2)) {
+//					return Optional.of(ResolutionResult.of(resolveGav(m2, gav).toUri()));
+//				}
+//			}
 		}
 		else {
 			LOG.debug("Bootstrap roots configured, trying each");
@@ -169,7 +160,7 @@ public final class BootstrapRepository implements LocalRepository {
 	}
 
 	protected Path resolveGav(Path root, GAV gav) {
-		return root.resolve(LocalRepository.gavPath(pattern, gav));
+		return root.resolve(LocalRepository.gavPath(gav));
 	}
 
 }

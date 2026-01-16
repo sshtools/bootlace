@@ -20,11 +20,12 @@
  */
 package com.sshtools.bootlace.platform;
 
+import static com.sshtools.bootlace.api.FilesAndFolders.recursiveDelete;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystems;
-import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -37,7 +38,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -50,13 +50,16 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import com.sshtools.bootlace.api.BootContext;
+import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.DependencyGraph;
 import com.sshtools.bootlace.api.DependencyGraph.Dependency;
 import com.sshtools.bootlace.api.Exceptions.NotALayer;
 import com.sshtools.bootlace.api.ExtensionLayer;
 import com.sshtools.bootlace.api.Layer;
+import com.sshtools.bootlace.api.LayerType;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
@@ -178,6 +181,7 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 	private final Optional<Path> fallbackDirectory;
 
 	private ScheduledFuture<?> changedTask;
+	private PluginLayerImpl groupLayer;
 
 	private ExtensionLayerImpl(Builder builder) {
 		super(builder);
@@ -327,20 +331,6 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 		}
 	}
 
-	private static void recursiveDelete(Path fileOrDirectory, FileVisitOption... options) {
-		try (var walk = Files.walk(fileOrDirectory, options)) {
-			walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-				try {
-					Files.delete(p);
-				} catch (IOException e) {
-					throw new UncheckedIOException(e);
-				}
-			});
-		} catch (IOException ioe) {
-			throw new UncheckedIOException(ioe);
-		}
-	}
-
 	private void refresh() {
 		try {
 			checkForArchives();
@@ -355,31 +345,46 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 	}
 
 	private void checkForDeletedLayers() throws IOException {
-		var removed = new HashSet<String>();
-		extensions.forEach((id, layer) -> {
-
+		extensions.values().stream().forEach(lyr -> {
+			var id = lyr.id();
 			var dir = directory.resolve(id);
 			if (!Files.exists(dir)) {
-				removed.add(id);
-				var appLayer = (RootLayerImpl) rootLayer()
-						.orElseThrow(() -> new IllegalStateException("Dynamic layer not attached to app layer."));
-				try {
-					appLayer.beforeClose(layer);
-				}
-				finally {
-					try {
-						appLayer.close(layer);
-					}
-					finally {
-						appLayer.removeLayer(id);
-						extensions.remove(id);
-						layer.rootLayer(null);
-					}
-				}
+				LOG.info("Removing layer {0}", id);
+				closeLayer(lyr);
 			}
 		});
-		for (var layer : removed) {
-			extensions.remove(layer);
+	}
+
+	private void closeLayer(ChildLayer layer) {
+		if(layer.equals(this.groupLayer)) {
+			LOG.info("App layer being removed");
+			this.groupLayer = null;
+		}
+		
+		for(var child : layer.childLayers()) {
+			LOG.info("Child of {0} is {1}", layer.id(), child.id());
+			if(child.type() == LayerType.GROUP) {
+				// XXX TODO instead we must remove the parent module from its module config .. HOW?
+			}
+			else {
+				closeLayer(child);
+			}
+		}
+		
+		var rootLayer = (RootLayerImpl) rootLayer()
+				.orElseThrow(() -> new IllegalStateException("Dynamic layer not attached to root layer."));
+		try {
+			rootLayer.beforeClose(layer);
+		}
+		finally {
+			try {
+				rootLayer.close(layer);
+			}
+			finally {
+				rootLayer.removeLayer(layer.id());
+				extensions.remove(layer.id());
+				((AbstractChildLayer)layer).rootLayer(null);
+			}
 		}
 	}
 	
@@ -420,6 +425,14 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 
 		@Override
 		public void dependencies(Consumer<Dependency<DescriptorDir>> model) {
+			var type  = descriptor.type();
+			if(type == LayerType.GROUP) {
+				all.forEach(dd -> {
+					if(!dd.descriptor.id().equals(descriptor.id())) {
+						model.accept(new Dependency<DescriptorDir>(dd, this));	
+					}
+				});
+			}
 			Arrays.asList(descriptor.component().getAllElse("parent", new String[0])).forEach(par -> {
 				find(par).ifPresent(dd  -> {
 					model.accept(new Dependency<DescriptorDir>(dd, this));
@@ -444,14 +457,16 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			for (var dir : stream) {
 				Descriptor descriptor = null;
 				try (var dirStream = Files.newDirectoryStream(dir)) {
-					for (var jar : dirStream) {
+					for (var art : dirStream) {
 						
 						if(LOG.debug())
-							LOG.debug("Checking Jar {0}", jar);
+							LOG.debug("Checking dir {0} for descriptor for {1}", art, dir.getFileName().toString());
 						
 						try {
-							var nextDescriptor = new Descriptor.Builder().fromArtifact(jar).build();
-							if(descriptor == null) {
+							var nextDescriptor = new Descriptor.Builder().
+									fromArtifact(art).
+									build();
+							if(descriptor == null && nextDescriptor.id().equals(dir.getFileName().toString())) {
 								descriptor = nextDescriptor;
 							}
 						} catch (NoSuchFileException | NotALayer nsfe) {
@@ -464,7 +479,7 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 					LOG.warning("No loadable layers in extenssion directory {0}", dir);
 				}
 				else {		
-					l.add(new DescriptorDir(directory, descriptor, l));
+					l.add(new DescriptorDir(dir, descriptor, l));
 				}
 			}
 			
@@ -482,9 +497,9 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 
 	private void maybeLoadLayer(Path dir, Descriptor descriptor) {
 		var layerSection = descriptor.component();
-		var id = layerSection.get("id");
+		var id = descriptor.id();
 
-		var wantedParents = new HashSet<>(Arrays.asList(layerSection.getAllOr("parents").orElse(new String[0])));
+		var wantedParents = new HashSet<>(Arrays.asList(layerSection.getAllOr("parent").orElse(new String[0])));
 		wantedParents.add(id());
 
 		if (!allowParents.isEmpty()) {
@@ -504,29 +519,71 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 							id, p, id(), String.join(", ", denyParents)));
 			});
 		}
+		
+		var type = descriptor.type();
 
 		if (!extensions.containsKey(id)) {
+			
+			Collection<String> parents;
+			
+			if(type == LayerType.GROUP) {
+				/* TODO must make sure grtopu layer is loaded last and there is
+				 * only one */
+				if(groupLayer != null) {
+					throw new IllegalStateException(MessageFormat.format(
+							"There may only be one layer of type `GROUP` in a parent  layer. {0} cannot be added.",
+							id));
+				}
+				parents = extensions.keySet();
+				
+				
+				// TODO temp, remove this
+//				return;
+			}
+			else if(type == LayerType.STATIC || type == LayerType.BOOT) {
+				// TODO just noticed wantedParents wasnt being used. but  the framework *appeared* to work with just id() .. not sure
+//				parents = Arrays.asList(id()).
+				parents = Stream.concat(Stream.of(id()), wantedParents.stream()).distinct().toList();
+			}
+			else {
+				throw new IllegalStateException(MessageFormat.format(
+						"Layer {0} type {1} not supported in extension layer",
+						id, type));
+			}
 
 			var layer = new PluginLayerImpl.Builder(id).
 					fromDescriptor(descriptor).
-					withParents(id()).
-					withJarArtifactsDirectory(dir.resolve(id)).
+					withParents(parents).
+					withArtifactsDirectory(dir).
 					build();
 
-			var appLayer = (RootLayerImpl) rootLayer()
+			var rootLayer = (RootLayerImpl) rootLayer()
 					.orElseThrow(() -> new IllegalStateException("Dynamic layer not attached to app layer."));
 			
 				
 			try {
+
+				if(type.equals(LayerType.GROUP)) {
+					groupLayer = layer;
+				}
+				else if(groupLayer != null) {
+					/* TODO this layer as parent to groupLayer layer */
+					groupLayer.addParent(layer);
+				}
+				
 				extensions.put(id, layer);
-				layer.rootLayer(appLayer);
-				appLayer.addLayer(id, layer);
-				appLayer.open(layer);
-				appLayer.afterOpen(layer);
+				layer.rootLayer(rootLayer);
+				rootLayer.addLayer(id, layer);
+				rootLayer.open(layer);
+				rootLayer.afterOpen(layer);
 			}
 			catch(Exception e) {
+				if(groupLayer != null && type.equals(LayerType.GROUP)) {
+					groupLayer = null;
+				}
+				
 				try {
-					appLayer.close(layer);
+					rootLayer.close(layer);
 				}
 				catch(Exception ex) {
 				}
@@ -535,7 +592,7 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 						layer.rootLayer(null);
 					}
 					finally {
-						appLayer.removeLayer(id);
+						rootLayer.removeLayer(id);
 						extensions.remove(id);
 					}
 				}

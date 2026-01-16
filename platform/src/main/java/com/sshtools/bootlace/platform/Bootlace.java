@@ -42,6 +42,7 @@ public class Bootlace {
 
 	static INIReader.Builder createINIReader() {
 		return new INIReader.Builder().
+				withSectionPathSeparator('/').
 				withMultiValueMode(MultiValueMode.SEPARATED).
 				withDuplicateKeysAction(DuplicateAction.APPEND);
 	}

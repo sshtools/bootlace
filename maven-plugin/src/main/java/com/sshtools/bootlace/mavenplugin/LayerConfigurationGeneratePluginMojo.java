@@ -44,7 +44,7 @@ import com.sshtools.jini.INIParseException;
 /**
  * Generates a bootlace plugin from the current project
  */
-@Mojo(threadSafe = true, name = "generate-layer-configuration", requiresProject = true, defaultPhase = LifecyclePhase.PACKAGE, requiresDependencyResolution = ResolutionScope.RUNTIME, requiresDependencyCollection = ResolutionScope.RUNTIME)
+@Mojo(threadSafe = true, name = "generate-layer-configuration", requiresProject = true, defaultPhase = LifecyclePhase.GENERATE_RESOURCES, requiresDependencyResolution = ResolutionScope.RUNTIME, requiresDependencyCollection = ResolutionScope.RUNTIME)
 @Description("Generates the layers.ini resource")
 public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo {
 
@@ -56,11 +56,20 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 	@Parameter(defaultValue = "true", property = "alwaysWritePOMValues")
 	private boolean alwaysWritePOMValues = true;
 	
-	@Parameter(defaultValue = "src/main/resources/layers.ini", required = true)
-	private String location;
+	@Parameter(defaultValue = "${basedir}/src/main/resources/META-INF/layers.ini", required = true)
+	private File source;
+	
+	@Parameter(defaultValue = "${project.build.outputDirectory}/META-INF/layers.ini", required = true)
+	private File target;
+	
+	@Parameter(defaultValue = "STATIC", required = true)
+	private String type;
 	
 	@Parameter(defaultValue = "${project.groupId}.${project.artifactId}", required = true)
 	private String id;
+	
+	@Parameter(defaultValue = "false")
+	private boolean repositories;
 	
 	@Component
 	private MavenProjectHelper projectHelper;
@@ -68,13 +77,12 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 	protected void onExecute() throws MojoExecutionException, MojoFailureException {
 		var log = getLog();
 		
-		var file = new File(project.getBasedir(), location);
 		
 		try {
 			INI ini;
 			boolean changed;
-			if(file.exists() && readExisting) {
-				ini = createINIReader().build().read(file.toPath());
+			if(source.exists() && readExisting) {
+				ini = createINIReader().build().read(source.toPath());
 				changed = false;
 			}
 			else {
@@ -99,30 +107,68 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 				changed = true;
 			}
 
+			if(!sec.contains("type") || sec.get("type", "").equals("") || (!type.equals("STATIC") && !type.equals(sec.get("type", ""))) || alwaysWritePOMValues) {
+				sec.put("type", type.toUpperCase());
+				changed = true;
+			}
+
+
 			var parents = new LinkedHashSet<String>();
 			var artifacts = new LinkedHashSet<String>();
 			var allArtifacts = getFilteredDependencies();
 			var extensions = getExtensions(allArtifacts);
 			
-			for(var art : allArtifacts) {
-				if(isExtension(art.getFile())) {
-					var artId = getLayers(art.getFile()).section("component").get("id");
-					var isInOther = false;
-					for(var innerArt : allArtifacts) {
-						if(!innerArt.equals(art) && isExtension(innerArt.getFile())) {
-							var innerLayer = getLayers(innerArt.getFile());
-							if(Arrays.asList(innerLayer.section("component").getAllElse("parent")).contains(artId)) {
-								isInOther = true;
-								break;
+			if(repositories) {
+				var repoList = getRepositories();
+				if(!repoList.isEmpty()) {
+					var repos = ini.obtainSection("repository");
+					repoList.forEach(repo -> {
+						if(repo.getLayout().getId().equals("default")) {
+							var repoSec = repos.obtainSection("remote").obtainSection(repo.getId());
+							repoSec.put("name", repo.getId());
+							repoSec.put("root", repo.getUrl());
+							repoSec.put("releases", repo.getReleases().isEnabled());
+							repoSec.put("snapshots", repo.getSnapshots().isEnabled());
+						}
+						else {
+							log.warn("Ignoring repository "+ repo.getId() + ", it is of layout " + repo.getLayout().getId());
+						}
+					});
+				}
+			}
+			
+			if(!sec.get("type").equals("ROOT")) {
+				for(var art : allArtifacts) {
+					
+					if(isBootlaceProvided(art.getFile())) {
+						log.info("Skipping bootlace provided "  + art.getFile());
+						continue;
+					} 
+					
+					if (isExclude(art)) {
+						log.info("Artifact " + art.getFile() + " is excluded");
+						continue;
+					} 
+					
+					if(isExtension(art.getFile())) {
+						var artId = getLayers(art.getFile()).section("component").get("id");
+						var isInOther = false;
+						for(var innerArt : allArtifacts) {
+							if(!innerArt.equals(art) && isExtension(innerArt.getFile())) {
+								var innerLayer = getLayers(innerArt.getFile());
+								if(Arrays.asList(innerLayer.section("component").getAllElse("parent")).contains(artId)) {
+									isInOther = true;
+									break;
+								}
 							}
 						}
+						if(!isInOther) {
+							parents.add(artId);
+						}
 					}
-					if(!isInOther) {
-						parents.add(artId);
+					else if(!isTransientDependencyOfExtension(art, extensions)) {
+						artifacts.add(makeArtifactName(art));
 					}
-				}
-				else if(!isTransientDependencyOfExtension(art, extensions)) {
-					artifacts.add(makeArtifactName(art));
 				}
 			}
 			
@@ -141,10 +187,21 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 			var artifactsSec  = ini.obtainSection("artifacts");
 			var oldArtifacts = artifactsSec.keys().toArray(new String[0]);
 			if( ( oldArtifacts.length == 0 || alwaysWritePOMValues ) && !Arrays.equals(newArtifacts, oldArtifacts)) {
-				artifactsSec.clear();
-				for(var art : newArtifacts) {
-					artifactsSec.put(art, (String)null);
+				if(newArtifacts.length == 0) {
+					log.info("Removing artifacts section");
+					artifactsSec.remove();
 				}
+				else {
+					log.info("Adding artifacts section back");
+					artifactsSec.clear();
+					for(var art : newArtifacts) {
+						artifactsSec.put(art, (String)null);
+					}
+				}
+				changed = true;
+			}	
+			else if(newArtifacts.length == 0 && oldArtifacts.length == 0) {
+				artifactsSec.remove();
 				changed = true;
 			}
 			
@@ -153,10 +210,16 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 				meta.put("description", project.getDescription() == null ? sec.get("name") : project.getDescription());
 				changed = true;
 			}
+			meta.put("artifact", project.getGroupId() + ":" + project.getArtifactId() + ":" + project.getVersion());
+			if(!meta.contains("artifact") || alwaysWritePOMValues) {
+				meta.put("artifact", project.getGroupId() + ":" + project.getArtifactId() + ":" + project.getVersion());
+				changed = true;
+			}
 			
-			if(changed) {
-				log.info("Writing layer configuration file " + file);
-				createINIWriter().build().write(ini, file.toPath());
+			if(changed || !target.exists()) {
+				log.info("Writing layer configuration file " + target);
+				checkDir(target.toPath().getParent());
+				createINIWriter().build().write(ini, target.toPath());
 			}
 		}
 		catch(IOException | INIParseException ioe) {

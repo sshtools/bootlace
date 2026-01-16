@@ -33,6 +33,7 @@ import com.sshtools.bootlace.api.ArtifactVersion;
 import com.sshtools.bootlace.api.BootContext;
 import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.Http.HttpClientFactory;
+import com.sshtools.bootlace.api.LayerType;
 import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
 import com.sshtools.bootlace.api.RootLayer;
 import com.sshtools.bootlace.platform.AbstractLayer.AbstractLayerBuilder;
@@ -47,10 +48,11 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 	Optional<BootstrapRepository> bootstrapRepository = Optional.empty();
 	PluginHostInfo pluginHostInfo = new PluginHostInfo("bootlace", ArtifactVersion.getVersion("com.sshtools", "bootlace-platform"), "bootlace");
 	Optional<PluginInitializer> pluginInitializer = Optional.empty();
-	Optional<PluginDestroyer> pluginDestroyer;
+	Optional<PluginDestroyer> pluginDestroyer = Optional.empty();
 	
 	RootLayerBuilder() {
 		this("_app_");
+		type = LayerType.ROOT;
 	}
 
 	RootLayerBuilder(String id) {
@@ -82,12 +84,12 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 		});
 		withUserAgent(l.getOr("user-agent"));
 		descriptor.layers().forEach(g -> {
-			var type = g.getOr("type").orElse("static");
-			if (type.equals("dynamic")) {
+			var type = g.getEnum(LayerType.class, "type", LayerType.STATIC);
+			if (type == LayerType.DYNAMIC) {
 				withLayers(new ExtensionLayerImpl.Builder(g.key()).
 						fromComponentSection(g).
 						build());
-			} else if (type.equals("static")) {
+			} else if (type == LayerType.STATIC || type == LayerType.GROUP || type == LayerType.BOOT) {
 				withLayers(new PluginLayerImpl.Builder(g.key()).
 						fromComponentSection(g).
 						fromArtifactsSection(g.sectionOr("artifacts")).
@@ -152,8 +154,8 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 	@Override
 	protected RootLayerBuilder fromComponentSection(INI.Section section) {
 		super.fromComponentSection(section);
-		if (!"static".equals(section.getOr("type").orElse("static"))) {
-			throw new IllegalArgumentException(format("Layer {0} cannot be of type {1}", id, section.get("type")));
+		if (type != LayerType.ROOT) {
+			throw new IllegalArgumentException(format("Layer {0} cannot be of type {1}", id, this.type));
 		}
 		return this;
 	}

@@ -56,7 +56,7 @@ public abstract class AbstractBaseExtensionsMojo extends AbstractMojo {
 			onExecute();
 		}
 		else
-			getLog().info(String.format("Skipping %s, it is a POM and we are configured to skip these.", project.getArtifact().getArtifactId()));
+			getLog().info(String.format("Skipping %s per configuration.", project.getArtifact().getArtifactId()));
 	}
 
 	protected void onExecute() throws MojoExecutionException, MojoFailureException {

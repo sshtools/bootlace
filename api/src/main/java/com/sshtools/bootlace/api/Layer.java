@@ -66,6 +66,8 @@ public interface Layer {
 	Set<String> localRepositories();
 	
 	LayerType type();
+	
+	Optional<ModuleParameters> moduleParameters();
 
 	default Optional<LayerArtifacts> finalArtifacts() {
 		return Optional.empty();

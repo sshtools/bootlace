@@ -255,7 +255,6 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 	}
 
 	void addParent(PluginLayerImpl layer) {
-		// TODO Auto-generated method stub
 		throw new UnsupportedOperationException("TODO");
 		
 	}

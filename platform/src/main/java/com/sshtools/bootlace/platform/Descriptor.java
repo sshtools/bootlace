@@ -103,6 +103,7 @@ public final class Descriptor {
 	private final Optional<Section> repositories;
 	private final Optional<Section> meta;
 	private final LayerType type;
+	private final Optional<Section> modules;
 
 	private Descriptor(Builder bldr) {
 		component = bldr.ini.section("component");
@@ -112,6 +113,7 @@ public final class Descriptor {
 		type = component.getEnum(LayerType.class, "type", LayerType.STATIC);
 		children = Arrays.asList(bldr.ini.sectionOr("layer").map(l -> l.allSections()).orElse(new Section[0]));
 		repositories = bldr.ini.sectionOr("repository");
+		modules = bldr.ini.sectionOr("modules");
 	}
 
 	public List<Section> layers() {
@@ -120,6 +122,10 @@ public final class Descriptor {
 
 	public Section component() {
 		return component;
+	}
+
+	public Optional<Section> modules() {
+		return modules;
 	}
 
 	public String id() {

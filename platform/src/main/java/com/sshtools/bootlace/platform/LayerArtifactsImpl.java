@@ -203,11 +203,22 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	private void processDescriptor(PluginLayerImpl pluginLayerDef, Descriptor descriptor, Path descriptorPath) {
 		/* TODO: This is all very similar to what happens in PluginLayerImpl. It 
 		 * should be re-used
+		 * 
+		 * TODO its a bit of a pain moduleParameters, localRepositories, remoteRepositories
+		 *      and appRepositories and have left as  modifiable. Ideally they should be immutable
 		 */
 				
 		var section = descriptor.component();
 		
 		/* Override some other basic stuff if possible */
+
+		/* Add more repositories and child artifacts */
+		descriptor.modules().ifPresent(mods -> {
+			pluginLayerDef.moduleParameters = Optional.of(new DefaultModuleParameters.DefaultModuleParametersBuilder().
+					fromParameters(pluginLayerDef.moduleParameters).
+					fromModuleSection(section).
+					build());
+		});
 
 		/* Add more repositories and child artifacts */
 		var repos = Stream.concat(

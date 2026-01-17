@@ -30,6 +30,7 @@ import java.nio.file.Paths;
 import java.text.ParseException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -43,12 +44,13 @@ import com.sshtools.bootlace.api.LocalRepository;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
-import com.sshtools.bootlace.platform.jini.INI;
-import com.sshtools.bootlace.platform.jini.INI.Section;
+import com.sshtools.bootlace.api.ModuleParameters;
 import com.sshtools.bootlace.api.RemoteRepository;
 import com.sshtools.bootlace.api.Repository;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.bootlace.api.RootLayer;
+import com.sshtools.bootlace.platform.jini.INI;
+import com.sshtools.bootlace.platform.jini.INI.Section;
 
 abstract class AbstractLayer implements Layer {
 
@@ -62,6 +64,7 @@ abstract class AbstractLayer implements Layer {
 		Optional<ResolutionMonitor> monitor = Optional.empty();
 		Set<String> localRepositories = new LinkedHashSet<>();
 		LayerType type = LayerType.STATIC;
+		Optional<ModuleParameters> moduleParameters = Optional.empty();
 
 		protected String id;
 		protected Optional<String> name = Optional.empty();
@@ -70,6 +73,16 @@ abstract class AbstractLayer implements Layer {
 			if(id == null || id.length() == 0)
 				throw new IllegalArgumentException("Empty layer ID");
 			this.id = id;
+		}
+		
+		public final L withModuleParameter(ModuleParameters moduleParameters) {
+			return withModuleParameter(Optional.of(moduleParameters));
+		}
+		
+		@SuppressWarnings("unchecked")
+		public final L withModuleParameter(Optional<ModuleParameters> moduleParameters) {
+			this.moduleParameters = moduleParameters;
+			return (L)this;
 		}
 
 		public final L addAppRepositories(String... repositories) {
@@ -114,10 +127,12 @@ abstract class AbstractLayer implements Layer {
 
 		@SuppressWarnings("unchecked")
 		public L fromDescriptor(Descriptor descriptor) {
-			return (L) fromComponentSection(descriptor.component()).
-					   fromRepositoryDefsSection(RemoteRepository.class, descriptor.repositories().map(r -> r.obtainSection("remote"))).
-					   fromRepositoryDefsSection(AppRepository.class, descriptor.repositories().map(r -> r.obtainSection("local"))).
-					   fromRepositoryDefsSection(LocalRepository.class, descriptor.repositories().map(r -> r.obtainSection("app")));
+			 fromComponentSection(descriptor.component());
+			 descriptor.modules().ifPresent(this::fromModulesSection);
+			 fromRepositoryDefsSection(RemoteRepository.class, descriptor.repositories().map(r -> r.obtainSection("remote")));
+			 fromRepositoryDefsSection(AppRepository.class, descriptor.repositories().map(r -> r.obtainSection("local")));
+			 fromRepositoryDefsSection(LocalRepository.class, descriptor.repositories().map(r -> r.obtainSection("app")));
+			 return (L)this;
 		}
 
 		public final L fromINI(Path path) {
@@ -236,6 +251,12 @@ abstract class AbstractLayer implements Layer {
 			return (L)this;
 		}
 
+		public void fromModulesSection(Section section) {
+			withModuleParameter(new DefaultModuleParameters.DefaultModuleParametersBuilder().
+					fromModuleSection(section).
+					build());
+		}
+
 		@SuppressWarnings("unchecked")
 		protected L fromComponentSection(INI.Section section) {
 			withType(section.getEnum(LayerType.class, "type", LayerType.STATIC));
@@ -276,6 +297,7 @@ abstract class AbstractLayer implements Layer {
 	protected final Set<String> remoteRepositories;
 	protected final Set<String> localRepositories;
 	protected final Map<String, RepositoryDef> repositoryDefs;
+	protected Optional<ModuleParameters> moduleParameters;
 	
 	private final Optional<ResolutionMonitor> monitor;
 	private final String id;
@@ -287,6 +309,7 @@ abstract class AbstractLayer implements Layer {
 		this.id = builder.id;
 		this.type = builder.type;
 		this.name = builder.name;
+		this.moduleParameters = builder.moduleParameters;
 		this.appRepositories = new LinkedHashSet<>(builder.appRepositories); 
 		this.remoteRepositories = new LinkedHashSet<>(builder.remoteRepositories);
 		this.localRepositories = new LinkedHashSet<>(builder.localRepositories);
@@ -305,8 +328,13 @@ abstract class AbstractLayer implements Layer {
 	}
 
 	@Override
+	public final Optional<ModuleParameters> moduleParameters() {
+		return moduleParameters;
+	}
+
+	@Override
 	public final Set<String> appRepositories() {
-		return appRepositories;
+		return Collections.unmodifiableSet(appRepositories);
 	}
 
 	@Override
@@ -321,7 +349,7 @@ abstract class AbstractLayer implements Layer {
 
 	@Override
 	public final Set<String> localRepositories() {
-		return localRepositories;
+		return Collections.unmodifiableSet(localRepositories);
 	}
 
 	@Override
@@ -336,7 +364,7 @@ abstract class AbstractLayer implements Layer {
 
 	@Override
 	public final Set<String> remoteRepositories() {
-		return remoteRepositories;
+		return Collections.unmodifiableSet(remoteRepositories);
 	}
 
 	@Override

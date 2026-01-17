@@ -110,7 +110,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 	final void rootLayer(RootLayerImpl rootLayer) {
 		if(rootLayer == null && this.rootLayer.isPresent()) {
 			((RootLayerImpl)this.rootLayer.get()).publicLayers.remove(id());
-			this.rootLayer = null;
+			this.rootLayer = Optional.empty();
 		}
 		else {
 			this.rootLayer = Optional.ofNullable(rootLayer);

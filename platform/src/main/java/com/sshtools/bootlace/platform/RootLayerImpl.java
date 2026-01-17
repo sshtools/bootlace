@@ -593,7 +593,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		var childLayerLoader = new FilteredClassLoader.Builder(rootLoader).
 				build();
 		
-		var layer = createModuleLayer(layerDef.id(), parents, paths, childLayerLoader);
+		var layer = createModuleLayer(layerDef, parents, paths, childLayerLoader);
 		var modules = layer.modules();
 
 		ClassLoader childLoader;
@@ -612,7 +612,8 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		return layer;
 	}
 
-	private ModuleLayer createModuleLayer(String layerId, Set<ModuleLayer> parentLayers, Set<Path> modulePathEntries, ClassLoader loader) {
+	@SuppressWarnings("preview")
+	private ModuleLayer createModuleLayer(ChildLayer layerDef, Set<ModuleLayer> parentLayers, Set<Path> modulePathEntries, ClassLoader loader) {
 	
 		/* Sort the module paths so that directories come last, and also
 		 * canonicalize the paths. JPMS doesn't seem to liked directories that
@@ -636,23 +637,42 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			}
 		}).toList().toArray(Path[]::new));
 		
-		/* Create a module layer with  a single class loader that includes
-		 * all the modules in this layer
-		 */
-
+		/* Find all the modules we want to load */
 		var roots = finder.findAll().stream().map(m -> m.descriptor().name()).
 				collect(Collectors.toSet());
 
+		
+		/* Create a module layer with  a single class loader that includes
+		 * all the modules in this layer
+		 */
 		var appConfig = Configuration.resolveAndBind(finder,
 				parentLayers.stream().map(ModuleLayer::configuration).
 					collect(Collectors.toList()), ModuleFinder.of(),
 				roots);
 		
-		var mlayer = ModuleLayer.defineModulesWithOneLoader(appConfig, parentLayers.stream().toList(),
-				loader).layer();
 		
-		LOG.info("Created layer: {0} - {1}", layerId, mlayer);
+		var ctrlr = ModuleLayer.defineModulesWithOneLoader(appConfig, parentLayers.stream().toList(),
+				loader);
 		
+		// TODO custom exports, reads and opens	
+		layerDef.moduleParameters().ifPresent(modprms -> {
+			
+			
+			modprms.nativeModules().forEach(mod -> {
+				ctrlr.layer().findModule(mod).ifPresentOrElse(rmod -> {
+					LOG.info("Enabling native access for module {0}", rmod.getName());
+					ctrlr.enableNativeAccess(rmod);
+				}, () -> {
+					throw new IllegalArgumentException(MessageFormat.format("Module {0} configured for native access does not exist.", mod));
+				});
+			});	
+		});
+		
+		
+		
+		
+		var mlayer = ctrlr.layer();
+		LOG.info("Created layer: {0} - {1}", layerDef.id(), mlayer);
 		return mlayer;
 	}
 	

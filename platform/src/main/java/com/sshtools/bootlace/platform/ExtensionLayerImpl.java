@@ -194,9 +194,15 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			var queue = builder.queue.orElseGet(() -> DefaultQueue.DEFAULT);
 
 			if (builder.directoryMonitor) {
+				
 				var watchService = FileSystems.getDefault().newWatchService();
-				directory.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
-						StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
+				
+				directory.register(
+					watchService, 
+					StandardWatchEventKinds.ENTRY_CREATE,
+					StandardWatchEventKinds.ENTRY_DELETE, 
+					StandardWatchEventKinds.ENTRY_MODIFY
+				);
 
 				watchThread = new Thread(() -> {
 					try {
@@ -527,22 +533,14 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			Collection<String> parents;
 			
 			if(type == LayerType.GROUP) {
-				/* TODO must make sure grtopu layer is loaded last and there is
-				 * only one */
 				if(groupLayer != null) {
 					throw new IllegalStateException(MessageFormat.format(
 							"There may only be one layer of type `GROUP` in a parent  layer. {0} cannot be added.",
 							id));
 				}
 				parents = extensions.keySet();
-				
-				
-				// TODO temp, remove this
-//				return;
 			}
 			else if(type == LayerType.STATIC || type == LayerType.BOOT) {
-				// TODO just noticed wantedParents wasnt being used. but  the framework *appeared* to work with just id() .. not sure
-//				parents = Arrays.asList(id()).
 				parents = Stream.concat(Stream.of(id()), wantedParents.stream()).distinct().toList();
 			}
 			else {

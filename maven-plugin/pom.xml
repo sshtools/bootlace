@@ -30,6 +30,10 @@
 		<version>0.0.1-SNAPSHOT</version>
 		<relativePath>../</relativePath>
 	</parent>
+    <properties>
+        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+    </properties>
 	<name>Bootlace - Maven Plugin</name>
 	<packaging>maven-plugin</packaging>
 	<artifactId>bootlace-maven-plugin</artifactId>

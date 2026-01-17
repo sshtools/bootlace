@@ -654,9 +654,9 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		var ctrlr = ModuleLayer.defineModulesWithOneLoader(appConfig, parentLayers.stream().toList(),
 				loader);
 		
-		// TODO custom exports, reads and opens	
 		layerDef.moduleParameters().ifPresent(modprms -> {
-			
+
+			// TODO custom exports, reads and opens	
 			
 			modprms.nativeModules().forEach(mod -> {
 				ctrlr.layer().findModule(mod).ifPresentOrElse(rmod -> {
@@ -667,9 +667,6 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 				});
 			});	
 		});
-		
-		
-		
 		
 		var mlayer = ctrlr.layer();
 		LOG.info("Created layer: {0} - {1}", layerDef.id(), mlayer);

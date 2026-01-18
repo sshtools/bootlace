@@ -39,12 +39,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.ServiceLoader;
-import java.util.ServiceLoader.Provider;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.jar.Manifest;
 import java.util.stream.Collectors;
@@ -54,8 +51,6 @@ import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.BootContext;
 import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.Collect;
-import com.sshtools.bootlace.api.DependencyGraph;
-import com.sshtools.bootlace.api.DependencyGraph.Dependency;
 import com.sshtools.bootlace.api.Exceptions;
 import com.sshtools.bootlace.api.FilteredClassLoader;
 import com.sshtools.bootlace.api.GAV;
@@ -66,7 +61,6 @@ import com.sshtools.bootlace.api.LayerContext;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
-import com.sshtools.bootlace.api.NodeModel;
 import com.sshtools.bootlace.api.Plugin;
 import com.sshtools.bootlace.api.PluginContext;
 import com.sshtools.bootlace.api.PluginLayer;
@@ -613,7 +607,6 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		return layer;
 	}
 
-	@SuppressWarnings("preview")
 	private ModuleLayer createModuleLayer(ChildLayer layerDef, Set<ModuleLayer> parentLayers, Set<Path> modulePathEntries, ClassLoader loader) {
 	
 		/* Sort the module paths so that directories come last, and also
@@ -674,70 +667,6 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		return mlayer;
 	}
 	
-
-	private final static class JPMSPlugins  {
-		private final List<JPMSNode> list;
-		
-		private JPMSPlugins(ModuleLayer layer) {
-			 list = ServiceLoader.load(layer, Plugin.class).
-					 stream().
-					 map(p -> new JPMSNode(p, this)).
-					 toList();
-			
-		}
-		
-		private List<JPMSNode> sorted() {
-			var topologicallySorted = new ArrayList<>(new DependencyGraph<>(list).getTopologicallySorted());
-			list.forEach(l -> { 
-				if(!topologicallySorted.contains(l)) {
-					topologicallySorted.add(l);
-				}
-			});
-			return  topologicallySorted;
-		}
-		
-		private Optional<JPMSNode> forModule(String req) {
-			return list.stream().filter(p -> p.getProvider().type().getModule().getName().equals(req)).findFirst();
-		}
-	}
-	
-	private final static class JPMSNode implements NodeModel<JPMSNode> {
-		
-		private final ServiceLoader.Provider<Plugin> provider;
-		private final JPMSPlugins plugins;
-		
-		private JPMSNode(Provider<Plugin> provider, JPMSPlugins plugins) {
-			super();
-			this.provider = provider;
-			this.plugins = plugins;
-		}
-
-		private ServiceLoader.Provider<Plugin> getProvider() {
-			return provider;
-		}
-
-		@Override
-		public String name() {
-			return provider.type().getName();
-		}
-
-		@Override
-		public String toString() {
-			return name() + " [" + provider.type().getModule().getName() + "]";
-		}
-
-		@Override
-		public void dependencies(Consumer<Dependency<JPMSNode>> model) {
-			var desc = provider.type().getModule().getDescriptor();
-			desc.requires().stream().forEach(req -> {
-				plugins.forModule(req.name()).ifPresent(node -> {
-					model.accept(new Dependency<RootLayerImpl.JPMSNode>(node, this));
-					node.dependencies(model);
-				});	
-			});
-		}
-		
-	}
 
 	private void loadPlugins(PluginLayerImpl pluginLayer, String id, Set<ModuleLayer> parents, ModuleLayer layer) {
 

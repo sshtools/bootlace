@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 
+import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
@@ -42,6 +43,8 @@ import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResult;
 import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolverException;
 import org.sonatype.inject.Description;
 
+import com.sshtools.jini.INI.Section;
+
 /**
  * Generates a bootlace plugin from the current project
  */
@@ -49,7 +52,7 @@ import org.sonatype.inject.Description;
 @Description("Generates the layers.ini resource")
 public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 
-	@Parameter(defaultValue = "${basedir}/extensions", required = true)
+	@Parameter(defaultValue = "${project.build.directory}/extensions", required = true)
 	private File target;
 	
 	@Component
@@ -89,6 +92,7 @@ public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 		if(!isExclude(project.getArtifact()) && isExtension(out)) {
 			var lyrs = getLayers(out);
 			var cmp = lyrs.obtainSection("component");
+			var artifacts = lyrs.obtainSection("artifacts");
 			var id = cmp.get("id");
 			var type = cmp.get("type", "STATIC");
 			if("STATIC".equalsIgnoreCase(type) || "GROUP".equals(type)) {
@@ -116,7 +120,12 @@ public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 					if (isExclude(art)) {
 						log.info("Artifact " + art.getFile() + " is excluded");
 						continue;
-					} 
+					}
+					
+					if (!isInArtifactSection(artifacts, art)) {
+						log.info("Artifact " + art.getFile() + " is excluded because it is not in the layer.ini as an [artifact]");
+						continue;
+					}
 					
 					if(!isExtension(art.getFile()) && !isTransientDependencyOfExtension(art, extensions)) {
 
@@ -128,6 +137,23 @@ public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 		for(var module : project.getCollectedProjects()) {
 			linkOrCopyExtensions(module);
 		}
+	}
+
+	private boolean isInArtifactSection(Section artifacts, Artifact artifact) {
+		for(var key : artifacts.keys()) {
+			var arr = key.split(":");
+			getLog().debug("Comparing " + artifact + " to " + String.join(", ", arr));
+			if( arr.length > 1 &&
+				( arr[0].equals("") || arr[0].equals(artifact.getGroupId() ) ) &&
+				( arr[1].equals("") || arr[1].equals(artifact.getArtifactId() ) ) &&
+				( arr.length < 3 || ( arr.length > 2 && ( arr[2].equals("") || arr[2].equals(artifact.getVersion() ) ) ) ) &&
+				( arr.length < 4 || ( arr.length > 3 && ( arr[3].equals("") || arr[3].equals(artifact.getClassifier() ) ) ) )
+			) {
+				getLog().debug("   Match!");
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@Override

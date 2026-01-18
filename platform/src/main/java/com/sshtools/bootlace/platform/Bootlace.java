@@ -25,6 +25,7 @@ import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
 import com.sshtools.bootlace.platform.jini.INIReader;
 import com.sshtools.bootlace.platform.jini.INIReader.DuplicateAction;
 import com.sshtools.bootlace.platform.jini.INIReader.MultiValueMode;
+import com.sshtools.bootlace.platform.jini.Interpolation;
 
 public class Bootlace {
 
@@ -40,9 +41,33 @@ public class Bootlace {
 		return new RootLayerBuilder(id);
 	}
 
+	@SuppressWarnings("unused")
 	static INIReader.Builder createINIReader() {
 		return new INIReader.Builder().
 				withSectionPathSeparator('/').
+				withInterpolator((data,key) -> {
+					
+					/* Just support system properties and allow simple default value syntax */
+					
+					var idx = key.indexOf(':');
+					if(idx == -1) {
+						var val = System.getProperty(key);
+						if(val == null) {
+							throw new IllegalArgumentException("No such system property `"  + key + "`");
+						}
+						return val;
+					}
+					else {
+						var remain = key.substring(idx + 1);
+						key = key.substring(0, idx);
+						if(remain.startsWith("-")) {
+							return System.getProperty(key, remain.substring(1)); 
+						}
+						else {
+							throw new IllegalArgumentException("Invalid syntax after system property key. Must start with :-");
+						}
+					}
+				}).
 				withMultiValueMode(MultiValueMode.SEPARATED).
 				withDuplicateKeysAction(DuplicateAction.APPEND);
 	}

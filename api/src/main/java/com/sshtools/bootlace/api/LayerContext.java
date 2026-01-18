@@ -72,7 +72,7 @@ public interface LayerContext {
 
 	<S> ServiceLoader<S> loadFirst(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader);
 
-	<S> Iterable<S> loadAll(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader);
+	<S> Iterable<ServiceLoader.Provider<S>> loadAll(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader);
 
 
 }

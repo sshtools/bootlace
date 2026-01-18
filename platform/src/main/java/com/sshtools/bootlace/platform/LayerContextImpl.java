@@ -118,18 +118,18 @@ public final class LayerContextImpl implements LayerContext {
 	}
 
 	@Override
-	public <S> Iterable<S> loadAll(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader) {
+	public <S> Iterable<ServiceLoader.Provider<S>> loadAll(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader) {
 		var map = serviceMaps.get(srvType);
 		if(map == null)
 			return Collections.emptyList();
 		var realIt = map.iterator();
-		return new Iterable<S>() {
+		return new Iterable<ServiceLoader.Provider<S>>() {
 			
 			@Override
-			public Iterator<S> iterator() {
-				return new Iterator<S>() {
-					private Iterator<S> it;
-					private S next;
+			public Iterator<ServiceLoader.Provider<S>> iterator() {
+				return new Iterator<ServiceLoader.Provider<S>>() {
+					private Iterator<ServiceLoader.Provider<S>> it;
+					private ServiceLoader.Provider<S> next;
 					private ModuleLayer mod;
 
 					@Override
@@ -139,7 +139,7 @@ public final class LayerContextImpl implements LayerContext {
 					}
 
 					@Override
-					public S next() {
+					public ServiceLoader.Provider<S> next() {
 						try {
 							checkNext();
 							return next;
@@ -161,7 +161,7 @@ public final class LayerContextImpl implements LayerContext {
 								}
 								
 								if(it == null) {
-									it  = loader.apply(mod, srvType).iterator(); 
+									it  = loader.apply(mod, srvType).stream().iterator(); 
 								}
 								
 								if(it.hasNext()) {

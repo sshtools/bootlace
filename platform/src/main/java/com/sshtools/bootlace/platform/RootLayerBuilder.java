@@ -75,6 +75,7 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 		return this;
 	}
 
+	@SuppressWarnings("unused")
 	@Override
 	public RootLayerBuilder fromDescriptor(Descriptor descriptor) {
 		super.fromDescriptor(descriptor);

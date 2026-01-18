@@ -33,11 +33,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 import com.sshtools.bootlace.api.AppRepository;
+import com.sshtools.bootlace.api.ChildLayer;
 import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.LayerType;
 import com.sshtools.bootlace.api.LocalRepository;
@@ -373,6 +375,8 @@ abstract class AbstractLayer implements Layer {
 				+ appRepositories + ", localRepositories=" + localRepositories + ", monitor=" + monitor
 				+ ", remoteRepositories=" + remoteRepositories + "]";
 	}
+
+	abstract List<ChildLayer> childLayers();
 
 	protected abstract void onAfterOpen();
 

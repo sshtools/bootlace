@@ -39,7 +39,8 @@ public final class FilteredClassLoader extends ClassLoader {
 
     private final boolean hideModuleInfo;
 
-    private FilteredClassLoader(Builder b) {
+    @SuppressWarnings("unused")
+	private FilteredClassLoader(Builder b) {
         super(b.parent);
         this.hiddenPackagePrefixes = Collections.unmodifiableSet(normalizePackages(b.hiddenPackagePrefixes));
         this.hiddenClassNames = Collections.unmodifiableSet(new HashSet<>(b.hiddenClassNames));

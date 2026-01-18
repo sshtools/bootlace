@@ -190,7 +190,10 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	protected Set<String> artifactsDone = new HashSet<>();
 
 	public static String makeArtifactName(Artifact a) {
-		return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
+		if (a.getClassifier() == null || a.getClassifier().equals(""))
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
+		else
+			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier();
 	}
 
 	public static String makeKey(Artifact a) {

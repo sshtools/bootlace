@@ -141,8 +141,7 @@ public abstract class AbstractChildLayer extends AbstractLayer implements ChildL
 		return ClassLoader.getSystemClassLoader();
 	}
 
-	@Override
-	public final List<ChildLayer> childLayers() {
+	List<ChildLayer> childLayers() {
 		if(rootLayer != null && this.rootLayer.isPresent()) {
 			return  ((RootLayerImpl)this.rootLayer.get()).layers.values().stream().
 					filter(l -> l.parents().contains(id())).

@@ -118,6 +118,7 @@ public class Zip {
 		throw new NoSuchFileException(file.toString() + "/" + path);
 	}
 
+	@SuppressWarnings("unused")
 	public static <R> Optional<R> unzip(Path file, BiFunction<ZipEntry, InputStream, Optional<R>> visitor)
 			throws IOException {
 		return unzip(file, visitor, f -> true);

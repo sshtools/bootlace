@@ -260,6 +260,7 @@ public class DependencyGraph<M extends NodeModel<M>> implements Comparator<M> {
 		return visited;
 	}
 
+	@SuppressWarnings("unused")
 	private void add(Map<M, List<DependencyGroup<M>>> map, M key, Dependency<M> dep) {
 		List<DependencyGroup<M>> set = map.computeIfAbsent(key, k -> new ArrayList<>());
 		for (DependencyGroup<M> d : set) {

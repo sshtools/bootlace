@@ -23,6 +23,7 @@ package com.sshtools.bootlace.api;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.function.BiFunction;
 
 /**
  * Allows access to information about, and resources from any given layer that is a child
@@ -68,5 +69,10 @@ public interface LayerContext {
 	default Optional<Layer> parentOfId(String id) {
 		return parents().stream().filter(s -> s.id().equals(id)).findFirst();
 	}
+
+	<S> ServiceLoader<S> loadFirst(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader);
+
+	<S> Iterable<S> loadAll(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader);
+
 
 }

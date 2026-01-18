@@ -21,10 +21,14 @@
 package com.sshtools.bootlace.platform;
 
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BiFunction;
 
 import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.LayerContext;
@@ -41,48 +45,155 @@ public final class LayerContextImpl implements LayerContext {
 		public LayerContext get(ModuleLayer layer) {
 			return new LayerContextImpl(layer);
 		}
-		
+
 	}
 
 	private final ModuleLayer moduleLayer;
-	
+
 	private LayerContextImpl(ModuleLayer moduleLayer) {
 		this.moduleLayer = moduleLayer;
 	}
-	
+
 	private final static Map<String, ModuleLayer> layers = new ConcurrentHashMap<>();
 	private final static Map<ModuleLayer, Layer> layerDefs = new ConcurrentHashMap<>();
 	private final static Map<ModuleLayer, ClassLoader> loaders = new ConcurrentHashMap<>();
+	private final static Map<Class<?>, Set<ModuleLayer>> serviceMaps = new ConcurrentHashMap<>();
 
+	@SuppressWarnings("unused")
 	static void register(ModuleLayer layer, Layer layerDef, ClassLoader loader) {
-		Provider.LOG.info("Registering layer for context `{0}`", layerDef.id());
-
-		loaders.put(layer, loader);
-		layers.put(layerDef.id(), layer);
-		layerDefs.put(layer, layerDef);
-		
-		Provider.LOG.info("Registered layer for context `{0}`", layerDef.id());
-	}
+		synchronized(serviceMaps) {
+			Provider.LOG.info("Registering layer for context `{0}`", layerDef.id());
 	
+			loaders.put(layer, loader);
+			layers.put(layerDef.id(), layer);
+			layerDefs.put(layer, layerDef);
+	
+			for (var m : layer.modules()) {
+				var md = m.getDescriptor();
+				if (md == null)
+					continue; // should be non-null for named modules
+	
+				for (var p : md.provides()) { // provides ... with ...
+					String serviceName = p.service();
+	
+					Class<?> serviceType;
+					try {
+						// Load service API type from your API layer (or whatever loader hosts the
+						// service interfaces)
+						serviceType = Class.forName(serviceName, false, loader);
+					} catch (ClassNotFoundException e) {
+						// Not an API you know about / not visible to framework; ignore or log
+						Provider.LOG.warning("Unknown service class `{0}` for layer {1}", serviceName,  layerDef.id());
+						continue;
+					}
+	
+					Provider.LOG.info("Registered service `{0}` for layer {1}", serviceName,  layerDef.id());
+					var lst = serviceMaps.computeIfAbsent(serviceType, a -> new HashSet<ModuleLayer>());
+					lst.add(layer);
+				}
+			}
+	
+			Provider.LOG.info("Registered layer for context `{0}`", layerDef.id());
+		}
+	}
+
 	@Override
 	public Layer layer() {
 		return layerDefs.get(moduleLayer);
 	}
 
 	@Override
+	public <S> ServiceLoader<S> loadFirst(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader) {
+		synchronized(serviceMaps) {
+			var map = serviceMaps.get(srvType);
+			if(map != null) {
+				for(var ml : map) {
+					var srvldr = loader.apply(ml, srvType);
+					if(srvldr.findFirst().isPresent())
+						return srvldr;
+				}
+			}
+			return ServiceLoader.load(moduleLayer, srvType);
+		}
+	}
+
+	@Override
+	public <S> Iterable<S> loadAll(Class<S> srvType, BiFunction<ModuleLayer, Class<S>, ServiceLoader<S>> loader) {
+		var map = serviceMaps.get(srvType);
+		if(map == null)
+			return Collections.emptyList();
+		var realIt = map.iterator();
+		return new Iterable<S>() {
+			
+			@Override
+			public Iterator<S> iterator() {
+				return new Iterator<S>() {
+					private Iterator<S> it;
+					private S next;
+					private ModuleLayer mod;
+
+					@Override
+					public boolean hasNext() {
+						checkNext();
+						return next != null;
+					}
+
+					@Override
+					public S next() {
+						try {
+							checkNext();
+							return next;
+						}
+						finally {
+							next = null;
+						}
+					}
+
+					private void checkNext() {
+						if(next == null) {
+							while(true) {
+								if(mod == null) {
+									if(realIt.hasNext()) {
+										mod = realIt.next();
+									}
+									else
+										break;
+								}
+								
+								if(it == null) {
+									it  = loader.apply(mod, srvType).iterator(); 
+								}
+								
+								if(it.hasNext()) {
+									next = it.next();
+									break;
+								}
+								else {
+									mod = null;
+									it = null;
+								}
+							}
+						}							
+					}
+				};
+			}
+		};
+	}
+
+	@Override
 	public ClassLoader loader() {
 		return loaders.get(moduleLayer);
 	}
-	
+
 	@Override
 	public Set<Layer> parents() {
 		return Collections.unmodifiableSet(addParents(new LinkedHashSet<>(), moduleLayer));
 	}
-	
+
 	private Set<Layer> addParents(Set<Layer> l, ModuleLayer layer) {
 		var cl = new LinkedHashSet<LayerContextImpl>();
 		layer.parents().forEach(p -> {
-			LayerContextImpl ctx = ((LayerContextImpl)LayerContext.get(p));
+			LayerContextImpl ctx = ((LayerContextImpl) LayerContext.get(p));
 			cl.add(ctx);
 			l.add(ctx.layer());
 		});
@@ -93,16 +204,26 @@ public final class LayerContextImpl implements LayerContext {
 	}
 
 	public static void deregister(String id, ModuleLayer moduleLayer) {
-		layerDefs.remove(moduleLayer);;
-		loaders.remove(moduleLayer);
-		layers.remove(id);
+		synchronized(serviceMaps) {
+			layerDefs.remove(moduleLayer);
+			loaders.remove(moduleLayer);
+			layers.remove(id);
+			
+			var it = serviceMaps.entrySet().iterator();
+			while(it.hasNext()) {
+				var en = it.next();
+				if(en.getValue().remove(moduleLayer) && en.getValue().isEmpty()) {
+					it.remove();
+				}
+			}
+		}
 	}
 
 	@Override
 	public Iterable<ModuleLayer> childLayers() {
 		var ch = new LinkedHashSet<ModuleLayer>();
-		for(var l : layers.values()) {
-			if(l.parents().contains(moduleLayer)) {
+		for (var l : layers.values()) {
+			if (l.parents().contains(moduleLayer)) {
 				ch.add(l);
 			}
 		}

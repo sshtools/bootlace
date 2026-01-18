@@ -20,7 +20,6 @@
  */
 package com.sshtools.bootlace.api;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -82,10 +81,4 @@ public interface Layer {
 	 */
 	ModuleLayer moduleLayer();
 
-	/**
-	 * Get all of the layers that have this layer as a parent.
-	 * 
-	 * @return layers
-	 */
-	List<ChildLayer> childLayers();
 }

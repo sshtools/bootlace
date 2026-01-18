@@ -200,6 +200,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 		}
 	}
 	
+	@SuppressWarnings("unused")
 	private void processDescriptor(PluginLayerImpl pluginLayerDef, Descriptor descriptor, Path descriptorPath) {
 		/* TODO: This is all very similar to what happens in PluginLayerImpl. It 
 		 * should be re-used

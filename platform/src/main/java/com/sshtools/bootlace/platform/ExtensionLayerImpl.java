@@ -181,8 +181,8 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 	private final Optional<Path> fallbackDirectory;
 
 	private ScheduledFuture<?> changedTask;
-	private PluginLayerImpl groupLayer;
 
+	@SuppressWarnings("unused")
 	private ExtensionLayerImpl(Builder builder) {
 		super(builder);
 		fallbackDirectory = builder.fallbackDirectory;
@@ -362,12 +362,8 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 	}
 
 	private void closeLayer(ChildLayer layer) {
-		if(layer.equals(this.groupLayer)) {
-			LOG.info("App layer being removed");
-			this.groupLayer = null;
-		}
 		
-		for(var child : layer.childLayers()) {
+		for(var child : ((AbstractLayer)layer).childLayers()) {
 			LOG.info("Child of {0} is {1}", layer.id(), child.id());
 			if(child.type() == LayerType.GROUP) {
 				// XXX TODO instead we must remove the parent module from its module config .. HOW?
@@ -532,15 +528,7 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 			
 			Collection<String> parents;
 			
-			if(type == LayerType.GROUP) {
-				if(groupLayer != null) {
-					throw new IllegalStateException(MessageFormat.format(
-							"There may only be one layer of type `GROUP` in a parent  layer. {0} cannot be added.",
-							id));
-				}
-				parents = extensions.keySet();
-			}
-			else if(type == LayerType.STATIC || type == LayerType.BOOT) {
+			if(type == LayerType.STATIC || type == LayerType.BOOT || type == LayerType.GROUP) {
 				parents = Stream.concat(Stream.of(id()), wantedParents.stream()).distinct().toList();
 			}
 			else {
@@ -561,14 +549,6 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 				
 			try {
 
-				if(type.equals(LayerType.GROUP)) {
-					groupLayer = layer;
-				}
-				else if(groupLayer != null) {
-					/* TODO this layer as parent to groupLayer layer */
-					groupLayer.addParent(layer);
-				}
-				
 				extensions.put(id, layer);
 				layer.rootLayer(rootLayer);
 				rootLayer.addLayer(id, layer);
@@ -576,10 +556,6 @@ public final class ExtensionLayerImpl extends AbstractChildLayer implements Exte
 				rootLayer.afterOpen(layer);
 			}
 			catch(Exception e) {
-				if(groupLayer != null && type.equals(LayerType.GROUP)) {
-					groupLayer = null;
-				}
-				
 				try {
 					rootLayer.close(layer);
 				}

@@ -464,7 +464,8 @@ public interface Data {
             fireSectionUpdate(this, section, UpdateType.REMOVE);
         }
         
-        private String[] interpolate(String[] vals) {
+        @SuppressWarnings("unused")
+		private String[] interpolate(String[] vals) {
         	for(int i = 0 ; i < vals.length; i++) {
         		vals[i] = Interpolation.str(this, 
         				variablePattern.orElse(Interpolation.DEFAULT_VARIABLE_PATTERN), 

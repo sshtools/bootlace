@@ -150,15 +150,7 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
 				switch (response.statusCode()) {
 				case 200:
 					try(var in = response.body()) {
-						
-//						var bar = new ByteArrayOutputStream();
-//						response.body().transferTo(bar);
-//						System.out.println(new String(bar.toByteArray(), "UTF-8"));
-//						var bin = new ByteArrayInputStream(bar.toByteArray());
-//						var meta = SnapshotMetaData.of(bin);
-						
-						
-						var meta = SnapshotMetaData.of(response.body());
+						var meta = SnapshotMetaData.of(in);
 						uri = uri.resolve(meta.latestJarFilename());
 						gav = gav.toWithVersion(meta.latestJarVersion());
 					}

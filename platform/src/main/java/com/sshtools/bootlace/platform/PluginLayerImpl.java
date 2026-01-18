@@ -140,7 +140,11 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 		}
 
 		private ArtifactRef refFromFilename(Path props) {
-			return ArtifactRef.of(GAV.ofSpec(props.getFileName().toString()));
+			var fname = props.getFileName().toString();
+			if(fname.toLowerCase().endsWith(".jar")) {
+				fname = fname.substring(0, fname.length() - 4);
+			}
+			return ArtifactRef.of(GAV.ofSpec(fname).normalizeJar());
 		}
 		
 		private String getArtifactFromLayersINI(Path path) throws IOException {
@@ -156,6 +160,7 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 			throw new IOException("Not an extension maven artifact (no layers.ini).");
 		}
 
+		@SuppressWarnings("unused")
 		private Properties getMavenPropertiesForArtifact(InputStream in) throws IOException {
 			return Zip.unzip(in, (ze, is) -> {
 				var p = new Properties();

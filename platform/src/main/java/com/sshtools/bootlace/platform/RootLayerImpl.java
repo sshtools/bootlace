@@ -275,6 +275,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	
 	final Map<String, ChildLayer> layers;
 	
+	@SuppressWarnings("unused")
 	RootLayerImpl(RootLayerBuilder builder) {
 		super(builder);
 		this.pluginInitializer = builder.pluginInitializer;
@@ -336,7 +337,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	}
 	
 	@Override
-	public List<ChildLayer> childLayers() {
+	List<ChildLayer> childLayers() {
 		return  layers.values().stream().
 				filter(l -> l.parents().isEmpty()).
 				toList();

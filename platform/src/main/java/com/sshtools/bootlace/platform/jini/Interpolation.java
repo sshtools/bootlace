@@ -31,6 +31,7 @@ public final class Interpolation {
 	private Interpolation() {
 	}
 
+	@SuppressWarnings("unused")
 	public static Interpolator throwException()  {
 		return (data, k) -> {
 			throw new IllegalArgumentException(MessageFormat.format("Unknown string variable `{0}`'", k));
@@ -48,6 +49,7 @@ public final class Interpolation {
 		};
 	}
 	
+	@SuppressWarnings("unused")
 	public static Interpolator systemProperties()  {
 		return (data, k) -> {
 			if(k.startsWith("sys:")) {
@@ -58,6 +60,7 @@ public final class Interpolation {
 		};
 	}
 	
+	@SuppressWarnings("unused")
 	public static Interpolator environment()  {
 		return (data, k) -> {
 			if(k.startsWith("env:")) {

@@ -39,6 +39,7 @@ public record ArtifactRef(GAV gav, Optional<Path> path) {
 		return new ArtifactRef(gav, Optional.empty());
 	}
 	
+	@SuppressWarnings("unused")
 	public static ArtifactRef of(GAV gav, Path path) {
 		gav.versionOr().ifPresent(g -> { 
 			throw new IllegalArgumentException(MessageFormat.format("The GAV `{0}` has a local path of `{1}`, so the GAV should not have a version number.", gav, path));	

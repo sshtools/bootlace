@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
  */
 public class Collect {
 
+	@SuppressWarnings("unused")
 	public static <T, K, U> Collector<T, ?, Map<K,U>> toLinkedMap(
         Function<? super T, ? extends K> keyMapper,
         Function<? super T, ? extends U> valueMapper)

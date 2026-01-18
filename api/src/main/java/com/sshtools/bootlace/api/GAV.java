@@ -249,6 +249,15 @@ public final class GAV {
 	public boolean hasRepository() {
 		return repository.isPresent();
 	}
+	
+	public GAV normalizeJar() {
+		if(classifier.orElse("").equals("jar")) {
+			return new GAV(repository, groupId, artifactId, version, Optional.empty());
+		}
+		else {
+			return this;
+		}
+	}
 
 	public GAV toWithoutVersion() {
 		return new GAV(repository, groupId, artifactId, Optional.empty(), classifier);

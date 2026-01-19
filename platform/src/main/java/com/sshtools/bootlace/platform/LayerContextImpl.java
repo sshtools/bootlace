@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -109,11 +110,11 @@ public final class LayerContextImpl implements LayerContext {
 			if(map != null) {
 				for(var ml : map) {
 					var srvldr = loader.apply(ml, srvType);
-					if(srvldr.findFirst().isPresent())
+					if(srvldr.stream().findFirst().isPresent())
 						return srvldr;
 				}
 			}
-			return ServiceLoader.load(moduleLayer, srvType);
+			throw new ServiceConfigurationError("Service " + srvType.getName() + " not found in this or any parent layer.");
 		}
 	}
 

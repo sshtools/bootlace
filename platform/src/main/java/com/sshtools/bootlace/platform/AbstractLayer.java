@@ -65,7 +65,7 @@ abstract class AbstractLayer implements Layer {
 		Set<RepositoryDef> repositoryDefs = new LinkedHashSet<>();
 		Optional<ResolutionMonitor> monitor = Optional.empty();
 		Set<String> localRepositories = new LinkedHashSet<>();
-		LayerType type = LayerType.STATIC;
+		LayerType type = LayerType.DEFAULT;
 		Optional<ModuleParameters> moduleParameters = Optional.empty();
 
 		protected String id;
@@ -261,7 +261,7 @@ abstract class AbstractLayer implements Layer {
 
 		@SuppressWarnings("unchecked")
 		protected L fromComponentSection(INI.Section section) {
-			withType(section.getEnum(LayerType.class, "type", LayerType.STATIC));
+			withType(section.getEnum(LayerType.class, "type", LayerType.DEFAULT));
 			addLocalRepositories(section.getAllOr("local-repository").orElse(new String[0]));
 			addLocalRepositories(section.getAllOr("local-repositories").orElse(new String[0]));
 			addAppRepositories(section.getAllOr("app-repository").orElse(new String[0]));

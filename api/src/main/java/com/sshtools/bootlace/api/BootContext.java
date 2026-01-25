@@ -21,6 +21,7 @@
 package com.sshtools.bootlace.api;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 
 import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
@@ -98,4 +99,11 @@ public interface BootContext {
 	 * Restart all layers, i.e. the entire application.
 	 */
 	void restart();
+	
+	/**
+	 * Root path
+	 */
+	default Path basePath() {
+		return Paths.get(System.getProperty("user.dir"));
+	}
 }

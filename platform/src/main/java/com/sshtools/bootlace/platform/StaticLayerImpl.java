@@ -18,45 +18,37 @@
  * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package com.sshtools.bootlace.api;
+package com.sshtools.bootlace.platform;
 
 import java.nio.file.Path;
-import java.util.Optional;
-import java.util.Properties;
 
-public record ArtifactRef(GAV gav, Optional<Path> path) {
+import com.sshtools.bootlace.api.ExtensionLayer;
+
+/**
+ * A Container layer that watches a particular directory to load further layers
+ * from.
+ */
+public final class StaticLayerImpl extends AbstractStaticLayer implements ExtensionLayer {
+
+	public final static class Builder extends AbstractStaticLayerBuilder<Builder> {
+
+		public Builder(String id) {
+			super(id);
+		}
+
+		public StaticLayerImpl build() {
+			return new StaticLayerImpl(this);
+		}
+	}
+
+
+	private StaticLayerImpl(Builder builder) {
+		super(builder);
+	}
 	
-	public static ArtifactRef of(Properties properties) {
-		return of(GAV.ofProperties(properties));
-	}
-	
-	public static ArtifactRef of(Properties properties, Path path) {
-		return of(GAV.ofProperties(properties), path);
-	}
-
-	public static ArtifactRef of(GAV gav) {
-		return new ArtifactRef(gav, Optional.empty());
-	}
-	
-	@SuppressWarnings("unused")
-	public static ArtifactRef of(GAV gav, Path path) {
-//		gav.versionOr().ifPresent(g -> { 
-//			throw new IllegalArgumentException(MessageFormat.format("The GAV `{0}` has a local path of `{1}`, so the GAV should not have a version number.", gav, path));	
-//		});
-		return new ArtifactRef(gav, Optional.of(path));
-	}
-
-	public ArtifactRef withPath(Path path) {
-		return new ArtifactRef(gav, Optional.of(path));
-	}
-
-	public boolean hasPath() {
-		return path.isPresent();
-	}
-
 	@Override
-	public String toString() {
-		return gav + "[" + path.map(Path::toString).orElse("<none>") + "]";
+	protected Path defaultDirectory() {
+		throw new IllegalStateException("Static layers required directory is specified.");
 	}
 
 }

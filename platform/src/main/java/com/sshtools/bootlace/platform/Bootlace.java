@@ -25,7 +25,6 @@ import com.sshtools.bootlace.api.PluginContext.PluginHostInfo;
 import com.sshtools.bootlace.platform.jini.INIReader;
 import com.sshtools.bootlace.platform.jini.INIReader.DuplicateAction;
 import com.sshtools.bootlace.platform.jini.INIReader.MultiValueMode;
-import com.sshtools.bootlace.platform.jini.Interpolation;
 
 public class Bootlace {
 

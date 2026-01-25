@@ -46,10 +46,11 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 	List<ChildLayer> layers = new ArrayList<>();
 	Optional<HttpClientFactory> httpClientFactory = Optional.empty();
 	Optional<BootstrapRepository> bootstrapRepository = Optional.empty();
-	PluginHostInfo pluginHostInfo = new PluginHostInfo("bootlace", ArtifactVersion.getVersion("com.sshtools", "bootlace-platform"), "bootlace");
+	PluginHostInfo pluginHostInfo = new PluginHostInfo("bootlace",
+			ArtifactVersion.getVersion("com.sshtools", "bootlace-platform"), "bootlace");
 	Optional<PluginInitializer> pluginInitializer = Optional.empty();
 	Optional<PluginDestroyer> pluginDestroyer = Optional.empty();
-	
+
 	RootLayerBuilder() {
 		this("_app_");
 		type = LayerType.ROOT;
@@ -64,14 +65,13 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 	}
 
 	public RootLayerBuilder fromStandardArguments(String... args) {
-		if(args.length == 0) 
+		if (args.length == 0)
 			fromINIResource();
-		else if(args.length == 1 && !args[0].startsWith("--")) {
+		else if (args.length == 1 && !args[0].startsWith("--")) {
 			fromINI(args[0]);
-		}
-		else 
+		} else
 			throw new IllegalArgumentException("A single argument is supported, the path to a layers.ini file.");
-		
+
 		return this;
 	}
 
@@ -85,13 +85,26 @@ public final class RootLayerBuilder extends AbstractLayerBuilder<RootLayerBuilde
 		});
 		withUserAgent(l.getOr("user-agent"));
 		descriptor.layers().forEach(g -> {
-			var type = g.getEnum(LayerType.class, "type", LayerType.STATIC);
+			var type = g.getEnum(LayerType.class, "type", LayerType.DEFAULT);
 			if (type == LayerType.DYNAMIC) {
-				withLayers(new ExtensionLayerImpl.Builder(g.key()).
-						fromComponentSection(g).
-						build());
-			} else if (type == LayerType.STATIC || type == LayerType.GROUP || type == LayerType.BOOT) {
-				withLayers(new PluginLayerImpl.Builder(g.key()).
+				
+				var bldr = new ExtensionLayerImpl.Builder(g.key());
+				appContext.ifPresent(a -> bldr.withDirectory(a.basePath()));
+				withLayers(bldr.fromComponentSection(g).build());
+				
+			}
+			else if (type == LayerType.STATIC) {
+				
+				var bldr = new StaticLayerImpl.Builder(g.key());
+				appContext.ifPresent(a -> bldr.withDirectory(a.basePath()));
+				withLayers(bldr.fromComponentSection(g).build());
+				
+			} else if (type == LayerType.DEFAULT ||type == LayerType.GROUP || type == LayerType.BOOT) {
+				
+				var bldr = new DefaultLayerImpl.Builder(g.key());
+				appContext.ifPresent(a -> bldr.withBaseDirectory(a.basePath()));
+				
+				withLayers(bldr.
 						fromComponentSection(g).
 						fromArtifactsSection(g.sectionOr("artifacts")).
 						build());

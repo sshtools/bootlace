@@ -28,10 +28,6 @@ public interface LayerArtifacts {
 
 	Layer layer();
 	
-	ArtifactRef primaryArtifact();
-
-	Set<ArtifactRef> dependencies();
-
 	Set<ArtifactRef> artifacts();
 
 	Set<Path> paths();

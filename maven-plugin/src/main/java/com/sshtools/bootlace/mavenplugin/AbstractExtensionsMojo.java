@@ -21,6 +21,7 @@
 package com.sshtools.bootlace.mavenplugin;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -211,12 +213,89 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 					+ "." + art.getType();
 	}
 
-	public static String makeFilename(Artifact a) {
-		if (a.getClassifier() == null || a.getClassifier().equals(""))
-			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + "." + a.getType();
-		else
-			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + "."
-					+ a.getType();
+	protected String makeFilename(Artifact a) {
+		
+		
+		if(!hasModuleInfo(a.getFile()) && !hasAutomaticModuleInfo(a.getFile())) {
+			getLog().info("Artifact " + a + " is an unnamed module (no module-info and no Automatic-Module-Name), ensuring filename generates a module name");
+			return a.getArtifactId() + "." + a.getType();
+		}
+		else {
+			if (a.getClassifier() == null || a.getClassifier().equals(""))
+				return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + "." + a.getType();
+			else
+				return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + "."
+						+ a.getType();
+		}
+	}
+
+	protected boolean hasModuleInfo(File resolvedFile) {
+		if(resolvedFile.isDirectory()) {
+			return new File(resolvedFile, "module-info.class").exists();
+		}
+		else {
+			try(var jf = new JarFile(resolvedFile)) {
+				var en = jf.entries();
+				while(en.hasMoreElements()) {
+					var entry = en.nextElement();
+					if(entry.getName().equals("module-info.class") || entry.getName().endsWith("/module-info.class")) {
+						return true;
+					}
+				}
+				return false;
+			}
+			catch(IOException ioe) {
+				throw new UncheckedIOException(ioe);
+			}
+		}
+	}
+	
+	protected boolean hasAutomaticModuleInfo(File resolvedFile) {
+		return getMetaAttribute(resolvedFile, null, "Automatic-Module-Name") != null;
+	}
+
+	private String getMetaAttribute(File resolvedFile,  String sec, String key) {
+		if(resolvedFile.isDirectory()) {
+			var mffile = new File(new File(resolvedFile, "META-INF"), "MANIFEST.MF");
+			if(mffile.exists()) {
+				try(var in = new FileInputStream(mffile)) {
+					return getValueFromManifest(sec, key, new Manifest(in));
+				}
+				catch(IOException ioe) {
+					throw new UncheckedIOException(ioe);
+				}
+			}
+			else {
+				return null;
+			}
+		}
+		else {
+			try(var jf = new JarFile(resolvedFile)) {
+				var mf = jf.getManifest();
+				if(mf != null) {
+					return getValueFromManifest(sec, key, mf);
+				}
+				return null;
+			}
+			catch(IOException ioe) {
+				throw new UncheckedIOException(ioe);
+			}
+		}
+	}
+
+	protected String getValueFromManifest(String sec, String key, Manifest mf) {
+		if(sec == null) {
+			return mf.getMainAttributes().getValue(key);
+		}
+		else {
+			var attrs = mf.getAttributes(sec);
+			if(attrs != null) {
+				return attrs.getValue(key);	
+			}
+			else {
+				return null;
+			}
+		}
 	}
 
 	private void handleResult(ArtifactResult result)

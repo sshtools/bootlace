@@ -62,7 +62,7 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 	@Parameter(defaultValue = "${project.build.outputDirectory}/META-INF/layers.ini", required = true)
 	private File target;
 	
-	@Parameter(defaultValue = "STATIC", required = true)
+	@Parameter(defaultValue = "DEFAULT", required = true)
 	private String type;
 	
 	@Parameter(defaultValue = "${project.groupId}.${project.artifactId}", required = true)
@@ -107,7 +107,7 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 				changed = true;
 			}
 
-			if(!sec.contains("type") || sec.get("type", "").equals("") || (!type.equals("STATIC") && !type.equals(sec.get("type", ""))) || alwaysWritePOMValues) {
+			if(!sec.contains("type") || sec.get("type", "").equals("") || (!type.equals("DEFAULT") && !type.equals(sec.get("type", ""))) || alwaysWritePOMValues) {
 				sec.put("type", type.toUpperCase());
 				changed = true;
 			}

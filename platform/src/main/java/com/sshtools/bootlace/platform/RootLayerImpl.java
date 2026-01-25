@@ -29,6 +29,7 @@ import java.lang.module.ModuleFinder;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,7 +64,7 @@ import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
 import com.sshtools.bootlace.api.Plugin;
 import com.sshtools.bootlace.api.PluginContext;
-import com.sshtools.bootlace.api.PluginLayer;
+import com.sshtools.bootlace.api.DefaultLayer;
 import com.sshtools.bootlace.api.PluginRef;
 import com.sshtools.bootlace.api.RootContext;
 import com.sshtools.bootlace.api.RootLayer;
@@ -87,9 +88,9 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		private final ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects;
 		private final Set<ModuleLayer> parents;
 		private final List<AutoCloseable> closeable = new ArrayList<>();
-		private final PluginLayerImpl layer;
+		private final DefaultLayerImpl layer;
 
-		private ChildPluginContext(PluginLayerImpl layer, ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects,
+		private ChildPluginContext(DefaultLayerImpl layer, ConcurrentHashMap<Class<? extends Plugin>, Plugin> pluginObjects,
 				Set<ModuleLayer> parents) {
 			this.layer = layer;
 			this.pluginObjects = pluginObjects;
@@ -170,8 +171,8 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 			for(var mod : parents) {
 				var ctx  = LayerContext.get(mod);
 				var lyr = ctx.layer();
-				if(lyr instanceof PluginLayer) {
-					var plyr = (PluginLayer)lyr;
+				if(lyr instanceof DefaultLayer) {
+					var plyr = (DefaultLayer)lyr;
 					for(var ref : plyr.pluginRefs()) {
 						var pRes = ref.context().pluginOr(plugin);
 						if(pRes.isPresent())
@@ -263,11 +264,13 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	private final Optional<PluginDestroyer> pluginDestroyer;
 	protected final Map<String, ModuleLayer> moduleLayers = new ConcurrentHashMap<>();
 	protected final Map<String, ClassLoader> moduleLoaders = new ConcurrentHashMap<>();
+	protected final Path baseDir;
 
 	private boolean initialising;
 	private ClassLoader rootLoader;
 	
 	final Map<String, ChildLayer> layers;
+
 	
 	@SuppressWarnings("unused")
 	RootLayerImpl(RootLayerBuilder builder) {
@@ -291,11 +294,12 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		sem.tryAcquire();
 		app = builder.appContext;
 		root = new RootContextImpl();
+		baseDir = app.map(a -> a.basePath()).orElseGet(() -> Paths.get(System.getProperty("user.dir")));
 		
 		initialising = true;
 		try {
 			layers.values().forEach(l -> {
-				open(l);
+				open(l, baseDir);
 				afterOpen(l);
 			});
 		}
@@ -412,8 +416,8 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 
 	void afterOpen(ChildLayer child) {
 		try {
-			if(child instanceof PluginLayer) {
-				var pchild = (PluginLayerImpl)child;
+			if(child instanceof DefaultLayer) {
+				var pchild = (DefaultLayerImpl)child;
 				LOG.info("Post-initialising plugins in layer `{0}`", child.id());
 				pchild.pluginRefs.forEach(ref -> {
 					var plugin = ref.plugin(); 
@@ -448,8 +452,8 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	void beforeClose(ChildLayer layer) {
 
 		try {
-			if(layer instanceof PluginLayer) {
-				var pchild = (PluginLayerImpl)layer;
+			if(layer instanceof DefaultLayer) {
+				var pchild = (DefaultLayerImpl)layer;
 				try {
 					pchild.pluginRefs.forEach(ref -> {
 						runWithLoader(pchild.loader(), () -> {
@@ -511,7 +515,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		moduleLoaders.remove(layer.id());
 	}
 
-	void open(ChildLayer layerDef) {
+	void open(ChildLayer layerDef, Path contextDir) {
 		
 		
 //	; TODO 
@@ -528,18 +532,18 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 		LOG.debug(layerDef);
 			
 		monitor().ifPresent(mon -> mon.loadingLayer(layerDef));
-		if (layerDef instanceof PluginLayer) {
+		if (layerDef instanceof DefaultLayer) {
 			
 			if (LOG.debug()) {
 				LOG.debug("`{0}` is a plugin layer", id);
 			}
 
 			//
-			var pluginLayerDef = (PluginLayerImpl) layerDef;
+			var pluginLayerDef = (DefaultLayerImpl) layerDef;
 			
 			LOG.info("Artifacts: {0}" , System.lineSeparator() + "    " +String.join("," + System.lineSeparator() + "    ", pluginLayerDef.artifacts().stream().map(ArtifactRef::toString).toList()));
 			
-			var layerArtifacts = new LayerArtifactsImpl(pluginLayerDef, httpClientFactory, root);
+			var layerArtifacts = new LayerArtifactsImpl(baseDir, pluginLayerDef, httpClientFactory, root);
 			pluginLayerDef.layerArtifacts = Optional.of(layerArtifacts);
 			var paths = layerArtifacts.paths(); 
 
@@ -668,7 +672,7 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	}
 	
 
-	private void loadPlugins(PluginLayerImpl pluginLayer, String id, Set<ModuleLayer> parents, ModuleLayer layer) {
+	private void loadPlugins(DefaultLayerImpl pluginLayer, String id, Set<ModuleLayer> parents, ModuleLayer layer) {
 
 		LOG.info("Loading plugins for layer `{0}`", id);
 

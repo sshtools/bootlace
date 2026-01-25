@@ -45,7 +45,7 @@ import com.sshtools.bootlace.api.LayerArtifacts;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
-import com.sshtools.bootlace.api.PluginLayer;
+import com.sshtools.bootlace.api.DefaultLayer;
 import com.sshtools.bootlace.api.ResolutionMonitor;
 import com.sshtools.bootlace.platform.RootLayerImpl.RootContextImpl;
 
@@ -57,14 +57,16 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	private Set<ArtifactRef> artifactsDone = new LinkedHashSet<>();
 	private Set<ArtifactRef> finalArtifactsDone = new LinkedHashSet<>();
 
-	private final PluginLayerImpl pluginLayerDef;
+	private final DefaultLayerImpl pluginLayerDef;
 	private final HttpClientFactory httpClientFactory;
 	private final RootContextImpl rootContext;
+	private final Path baseDir;
 	
-	LayerArtifactsImpl(PluginLayerImpl pluginLayerDef, HttpClientFactory httpClientFactory, RootContextImpl rootContext) {
+	LayerArtifactsImpl(Path baseDir, DefaultLayerImpl pluginLayerDef, HttpClientFactory httpClientFactory, RootContextImpl rootContext) {
 		this.pluginLayerDef = pluginLayerDef;
 		this.httpClientFactory = httpClientFactory;
 		this.rootContext = rootContext;
+		this.baseDir = baseDir;
 		
 		artifactsToDo.addAll(pluginLayerDef.artifacts());
 		
@@ -74,21 +76,9 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 			throw new UncheckedIOException(e);
 		}
 	}
-	
-	@Override
-	public ArtifactRef primaryArtifact() {
-		// TODO Auto-generated method stub
-		return null;
-	}
 
 	@Override
-	public Set<ArtifactRef> dependencies() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public PluginLayer layer() {
+	public DefaultLayer layer() {
 		return pluginLayerDef;
 	}
 	
@@ -193,6 +183,20 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	
 	private void addArtifactsIfNotDone(ArtifactRef ref) {
 		if(!artifactsDone.contains(ref)) {
+			
+			/* Is there any existing artifact that has just the same artifact id, but no
+			 * version, no group and no classifier. If so, ignore this new artifact
+			 */
+			for(var a : artifactsDone) {
+				if(a.gav().artifactId().equals(ref.gav().artifactId()) &&
+				   !a.gav().hasGroupId() && !a.gav().hasVersion() && !a.gav().hasClassifier()) {
+					if(LOG.debug()) {
+						LOG.debug("Skipping id-only artifact `{0}`'", ref);
+					}		
+					return;
+				}
+			}
+			
 			if(LOG.debug()) {
 				LOG.debug("Queueing artifact `{0}`'", ref);
 			}
@@ -201,7 +205,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 	}
 	
 	@SuppressWarnings("unused")
-	private void processDescriptor(PluginLayerImpl pluginLayerDef, Descriptor descriptor, Path descriptorPath) {
+	private void processDescriptor(DefaultLayerImpl pluginLayerDef, Descriptor descriptor, Path descriptorPath) {
 		/* TODO: This is all very similar to what happens in PluginLayerImpl. It 
 		 * should be re-used
 		 * 
@@ -276,7 +280,7 @@ public class LayerArtifactsImpl implements LayerArtifacts {
 					});
 				}
 				else if(v.length == 1 && !v[0].equals("")) {
-					addArtifactsIfNotDone(ArtifactRef.of(GAV.ofSpec(k), Paths.get(v[0])));
+					addArtifactsIfNotDone(ArtifactRef.of(GAV.ofSpec(k), baseDir.resolve(v[0])));
 				}
 				else if(v.length == 0 || (v.length == 1 && v[0].equals(""))) {
 					addArtifactsIfNotDone(ArtifactRef.of(GAV.ofSpec(k)));

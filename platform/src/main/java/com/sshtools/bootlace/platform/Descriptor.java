@@ -110,7 +110,7 @@ public final class Descriptor {
 		artifacts = bldr.ini.sectionOr("artifacts");
 		meta = bldr.ini.sectionOr("meta");
 		id = component.get("id");
-		type = component.getEnum(LayerType.class, "type", LayerType.STATIC);
+		type = component.getEnum(LayerType.class, "type", LayerType.DEFAULT);
 		children = Arrays.asList(bldr.ini.sectionOr("layer").map(l -> l.allSections()).orElse(new Section[0]));
 		repositories = bldr.ini.sectionOr("repository");
 		modules = bldr.ini.sectionOr("modules");

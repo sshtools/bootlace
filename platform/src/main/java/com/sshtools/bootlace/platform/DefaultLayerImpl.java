@@ -40,28 +40,29 @@ import com.sshtools.bootlace.api.ArtifactRef;
 import com.sshtools.bootlace.api.GAV;
 import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.LayerArtifacts;
-import com.sshtools.bootlace.api.PluginLayer;
+import com.sshtools.bootlace.api.DefaultLayer;
 import com.sshtools.bootlace.api.PluginRef;
 import com.sshtools.bootlace.api.Zip;
 import com.sshtools.bootlace.platform.jini.INI.Section;
 import com.sshtools.bootlace.platform.jini.INIParseException;
 
-public final class PluginLayerImpl extends AbstractChildLayer implements PluginLayer {
-	public final static class Builder extends AbstractChildLayerBuilder<PluginLayerImpl.Builder> {
+public final class DefaultLayerImpl extends AbstractChildLayer implements DefaultLayer {
+	public final static class Builder extends AbstractChildLayerBuilder<DefaultLayerImpl.Builder> {
 		private final Set<ArtifactRef> artifacts = new LinkedHashSet<>();
 		private Optional<String> icon = Optional.empty();
 		private Optional<String> description = Optional.empty();
+		private Path baseDir = Paths.get(System.getProperty("user.dir"));
 
 		public Builder(String id) {
 			super(id);
 		}
 
-		public PluginLayerImpl build() {
-			return new PluginLayerImpl(this);
+		public DefaultLayerImpl build() {
+			return new DefaultLayerImpl(this);
 		}
 		
 		@Override
-		public PluginLayerImpl.Builder fromDescriptor(Descriptor descriptor) {
+		public DefaultLayerImpl.Builder fromDescriptor(Descriptor descriptor) {
 			descriptor.meta().ifPresent(meta -> {
 				meta.getOr("description").ifPresent(this::withDescription);
 				meta.getOr("icon").ifPresent(this::withIcon);
@@ -69,7 +70,13 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 			return super.fromDescriptor(descriptor);
 		}
 
-		public PluginLayerImpl.Builder withArtifactsDirectory(Path dir) {
+
+		public DefaultLayerImpl.Builder withBaseDirectory(Path baseDir) {
+			this.baseDir = baseDir;
+			return this;
+		}
+
+		public DefaultLayerImpl.Builder withArtifactsDirectory(Path dir) {
 			try (var str = Files.newDirectoryStream(dir,
 						f -> ( !Files.isDirectory(f) && f.getFileName().toString().toLowerCase().endsWith(".jar")) || 
 							 (  Files.isDirectory(f) && f.getFileName().toString().equals("classes")))) {
@@ -85,10 +92,10 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 			} catch (IOException ioe) {
 				throw new UncheckedIOException(ioe);
 			}
-			return this;
+			return withBaseDirectory(dir);
 		}
 		
-		public PluginLayerImpl.Builder withJarArtifacts(Path... paths) {
+		public DefaultLayerImpl.Builder withJarArtifacts(Path... paths) {
 			Arrays.asList(paths).forEach((path) -> {
 				try(var in = Files.newInputStream(path)) {
 					try {
@@ -110,17 +117,17 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 			return this;
 		}
 		
-		public PluginLayerImpl.Builder withIcon(String icon) {
+		public DefaultLayerImpl.Builder withIcon(String icon) {
 			this.icon = Optional.of(icon);
 			return this;
 		}
 		
-		public PluginLayerImpl.Builder withDescription(String description) {
+		public DefaultLayerImpl.Builder withDescription(String description) {
 			this.description = Optional.of(description);
 			return this;
 		}
 		
-		public PluginLayerImpl.Builder withArtifactJar(InputStream in) {
+		public DefaultLayerImpl.Builder withArtifactJar(InputStream in) {
 			try {
 				var props = getMavenPropertiesForArtifact(in);
 				withArtifactRefs(refFromProperties(props));
@@ -174,38 +181,38 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 			}, ze -> ze.getName().matches(".*META-INF/maven/[^/]+/[^/]+/pom\\.properties")).orElseThrow(() -> new IllegalArgumentException("Artifact does not appear to be a Maven artifact, there is no Maven meta-data."));
 		}
 
-		public PluginLayerImpl.Builder withArtifactRefs(Collection<ArtifactRef> ref) {
+		public DefaultLayerImpl.Builder withArtifactRefs(Collection<ArtifactRef> ref) {
 			this.artifacts.addAll(ref);
 			return this;
 		}
-		public PluginLayerImpl.Builder withArtifactRefs(ArtifactRef... refs) {
+		public DefaultLayerImpl.Builder withArtifactRefs(ArtifactRef... refs) {
 			return withArtifactRefs(Arrays.asList(refs));
 		}
 
-		public PluginLayerImpl.Builder withArtifacts(Collection<GAV> ref) {
+		public DefaultLayerImpl.Builder withArtifacts(Collection<GAV> ref) {
 			return withArtifactRefs(ref.stream().map(ArtifactRef::of).toList());
 		}
 
-		public PluginLayerImpl.Builder withArtifacts(GAV... gav) {
+		public DefaultLayerImpl.Builder withArtifacts(GAV... gav) {
 			return withArtifacts(Arrays.asList(gav));
 		}
 
-		public PluginLayerImpl.Builder withArtifacts(String... gav) {
+		public DefaultLayerImpl.Builder withArtifacts(String... gav) {
 			return withArtifacts(Arrays.asList(gav).stream().map((s) -> new GAV.Builder().ofSpec(s).build()).toList());
 		}
 
-		protected PluginLayerImpl.Builder fromArtifactsSection(Optional<Section> section) {
+		protected DefaultLayerImpl.Builder fromArtifactsSection(Optional<Section> section) {
 			section.ifPresent(this::fromArtifactsSection);
 			return this;
 			
 		}
 		
-		protected PluginLayerImpl.Builder fromArtifactsSection(Section section) {
+		protected DefaultLayerImpl.Builder fromArtifactsSection(Section section) {
 			section.values().forEach((k, v) -> {
-				if(v.length == 1) {
-					withArtifactRefs(ArtifactRef.of(GAV.ofSpec(k), Paths.get(v[0])));
+				if(v.length == 1 && !v[0].equals("")) {
+					withArtifactRefs(ArtifactRef.of(GAV.ofSpec(k), baseDir.resolve(v[0])));
 				}
-				else if(v.length == 0) {
+				else if(v.length == 0 || (v.length == 1 && v[0].equals(""))) {
 					withArtifactRefs(ArtifactRef.of(GAV.ofSpec(k)));
 				}
 			});
@@ -220,7 +227,7 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 	Set<Layer> publicLayers = new LinkedHashSet<>(); 
 	private final Optional<String> icon, description;
 
-	PluginLayerImpl(PluginLayerImpl.Builder layerBuilder) {
+	DefaultLayerImpl(DefaultLayerImpl.Builder layerBuilder) {
 		super(layerBuilder);
 		artifacts = new LinkedHashSet<>(layerBuilder.artifacts);
 		icon = layerBuilder.icon;
@@ -254,12 +261,12 @@ public final class PluginLayerImpl extends AbstractChildLayer implements PluginL
 
 	@Override
 	public String toString() {
-		return "PluginLayer [id()=" + id() + ", name()=" + name() + ", parents()="
+		return "DefaultLayerImpl [id()=" + id() + ", name()=" + name() + ", parents()="
 				+ parents() + ", appRepositories()=" + appRepositories() + ", localRepositories()="
 				+ localRepositories() + ", remoteRepositories()=" + remoteRepositories() + ", artifacts=" + artifacts + "]";
 	}
 
-	void addParent(PluginLayerImpl layer) {
+	void addParent(DefaultLayerImpl layer) {
 		throw new UnsupportedOperationException("TODO");
 		
 	}

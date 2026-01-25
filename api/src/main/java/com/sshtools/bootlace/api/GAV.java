@@ -69,7 +69,14 @@ public final class GAV {
 					withRepository(first.substring(1));
 					it.next();
 				} else {
-					withGroupId(first);
+					if(it.hasNext()) {
+						withGroupId(first);
+					}
+					else {
+						/* Just artifact id */
+						withArtifactId(first);
+						return this;
+					}
 				}
 				withArtifactId(it.next());
 				if (it.hasNext())

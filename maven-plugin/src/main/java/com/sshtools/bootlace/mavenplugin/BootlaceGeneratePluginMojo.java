@@ -42,12 +42,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
-import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -188,7 +186,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 				var artifactKey = makeKey(a);
 				File resolvedFile = null;
-				String outName = null;
 
 //				if(artifactKey.equals("com.sshtools:jini-lib")) {
 //					/* TODO this is unfortunate. We need to find a way to hide this from child layers,
@@ -198,7 +195,7 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 //					continue;
 //				}
 //				else 
-					if(inDependency.contains(artifactKey)) {
+				if(inDependency.contains(artifactKey)) {
 					log.info("Artifact " + artifactKey + " is provided as a dependency of an a extension");
 					continue;
 				}
@@ -209,8 +206,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 					log.info("Artifact " + artifactKey + " is an extra");
 					resolvedFile = a.getFile();
 				}
-
-				outName = makeFilename(a);
 
 				if (!resolvedFile.exists()) {
 					log.warn(resolvedFile.getAbsolutePath() + " does not exist!");
@@ -226,10 +221,7 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 					continue;
 				}
 				
-				if(!hasModuleInfo(resolvedFile) && !hasAutomaticModuleInfo(resolvedFile)) {
-					log.info("Artifact " + artifactKey + " is an unnamed module (no module-info and no Automatic-Module-Name), ensuring filename generates a module name");
-					outName = a.getArtifactId() + "." + a.getType();
-				}
+				var outName = makeFilename(a);
 
 				log.info("Adding " + outName + " to plugin zip");
 
@@ -254,47 +246,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 
 			}
 
-		}
-	}
-
-	private boolean hasModuleInfo(File resolvedFile) {
-		try(var jf = new JarFile(resolvedFile)) {
-			var en = jf.entries();
-			while(en.hasMoreElements()) {
-				var entry = en.nextElement();
-				if(entry.getName().equals("module-info.class") || entry.getName().endsWith("/module-info.class")) {
-					return true;
-				}
-			}
-			return false;
-		}
-		catch(IOException ioe) {
-			throw new UncheckedIOException(ioe);
-		}
-	}
-	
-	private boolean hasAutomaticModuleInfo(File resolvedFile) {
-		return getMetaAttribute(resolvedFile, null, "Automatic-Module-Name") != null;
-	}
-
-	private String getMetaAttribute(File resolvedFile,  String sec, String key) {
-		try(var jf = new JarFile(resolvedFile)) {
-			var mf = jf.getManifest();
-			if(mf != null) {
-				if(sec == null) {
-					return mf.getMainAttributes().getValue(key);
-				}
-				else {
-					var attrs = mf.getAttributes(sec);
-					if(attrs != null) {
-						return attrs.getValue(key);	
-					}
-				}
-			}
-			return null;
-		}
-		catch(IOException ioe) {
-			throw new UncheckedIOException(ioe);
 		}
 	}
 

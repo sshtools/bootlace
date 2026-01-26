@@ -59,12 +59,7 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProjectHelper;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResolverException;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResult;
-import org.apache.maven.shared.transfer.dependencies.DefaultDependableCoordinate;
-import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolverException;
 import org.codehaus.plexus.util.IOUtil;
-import org.codehaus.plexus.util.StringUtils;
 import org.sonatype.inject.Description;
 
 /**
@@ -79,13 +74,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 	@Parameter(defaultValue = "true", property = "attach")
 	private boolean attach = true;
 
-	/**
-	 * Additional artifacts to add to the plugin. A string of the form
-	 * groupId:artifactId:version[:packaging[:classifier]].
-	 */
-	@Parameter(property = "bootlace.artifacts")
-	private List<String> artifacts;
-
 	@Component
 	private MavenProjectHelper projectHelper;
 
@@ -96,39 +84,6 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 		log.info(project.getExecutionProject().getBasedir().getAbsolutePath());
 
 		try {
-
-			/*
-			 * Download extra artifacts (e.g. platform specific jars for SWT, JavaFX etc
-			 * without adding them to the primary POM
-			 */
-			for (var artifact : artifacts) {
-				log.info("Getting " + artifact);
-
-				var tokens = StringUtils.split(artifact, ":");
-				if (tokens.length < 3 || tokens.length > 5) {
-					throw new MojoFailureException("Invalid artifact, you must specify "
-							+ "groupId:artifactId:version[:packaging[:classifier]] " + artifact);
-				}
-
-				coordinate.setGroupId(tokens[0]);
-				coordinate.setArtifactId(tokens[1]);
-				coordinate.setVersion(tokens[2]);
-
-				if (tokens.length >= 4) {
-					coordinate.setType(tokens[3]);
-				}
-				if (tokens.length == 5) {
-					coordinate.setClassifier(tokens[4]);
-				}
-
-				try {
-					doCoordinate();
-				} catch (MojoFailureException | DependencyResolverException | ArtifactResolverException e) {
-					throw new MojoExecutionException("Failed to process an artifact.", e);
-				}
-
-				coordinate = new DefaultDependableCoordinate();
-			}
 
 			var storeTarget = new File(output, File.separator + project.getArtifactId() + "-" 
 					+ project.getVersion() + "-bootlace.zip");
@@ -247,11 +202,5 @@ public class BootlaceGeneratePluginMojo extends AbstractExtensionsMojo {
 			}
 
 		}
-	}
-
-	@Override
-	protected void doHandleResult(ArtifactResult result)
-			throws MojoExecutionException, DependencyResolverException, ArtifactResolverException, IOException {
-		/* Only used for extra artifacts */
 	}
 }

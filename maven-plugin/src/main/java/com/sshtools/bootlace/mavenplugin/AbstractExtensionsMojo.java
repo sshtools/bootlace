@@ -28,7 +28,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,22 +46,17 @@ import org.apache.maven.artifact.repository.ArtifactRepositoryPolicy;
 import org.apache.maven.artifact.repository.MavenArtifactRepository;
 import org.apache.maven.artifact.repository.layout.ArtifactRepositoryLayout;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.Parameter;
-import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.repository.RepositorySystem;
 import org.apache.maven.shared.transfer.artifact.ArtifactCoordinate;
 import org.apache.maven.shared.transfer.artifact.DefaultArtifactCoordinate;
 import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResolver;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResolverException;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResult;
 import org.apache.maven.shared.transfer.dependencies.DefaultDependableCoordinate;
 import org.apache.maven.shared.transfer.dependencies.DependableCoordinate;
 import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolver;
-import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolverException;
 import org.codehaus.plexus.util.StringUtils;
 
 import com.sshtools.jini.INI;
@@ -189,8 +183,6 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 	@Parameter(property = "bootlace.exclude")
 	private List<String> excludes;
 
-	protected Set<String> artifactsDone = new HashSet<>();
-
 	public static String makeArtifactName(Artifact a) {
 		if (a.getClassifier() == null || a.getClassifier().equals(""))
 			return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
@@ -298,28 +290,6 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 		}
 	}
 
-	private void handleResult(ArtifactResult result)
-			throws MojoExecutionException, DependencyResolverException, ArtifactResolverException {
-
-		Artifact artifact = result.getArtifact();
-		String id = toCoords(artifact);
-
-		if (isExclude(artifact)) {
-			getLog().info(String.format("Skipping %s because it is excluded.", id));
-			return;
-		}
-
-		if (artifactsDone.contains(id))
-			return;
-		else
-			artifactsDone.add(id);
-		try {
-			doHandleResult(result);
-		} catch (IOException e) {
-			throw new MojoExecutionException("Failed to handle.", e);
-		}
-	}
-
 	protected boolean isExtensionOrBootlaceProvided(File resolvedFile) {
 		return isArtifactContains(resolvedFile, "META-INF/layers.ini", "META-INF/BOOTLACE.provided");
 	}
@@ -370,59 +340,6 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 			return true;
 		} else
 			return groups.contains(artifact.getGroupId());
-	}
-
-	protected abstract void doHandleResult(ArtifactResult result)
-			throws MojoExecutionException, DependencyResolverException, ArtifactResolverException, IOException;
-
-	protected void doCoordinate() throws MojoFailureException, MojoExecutionException, IllegalArgumentException,
-			DependencyResolverException, ArtifactResolverException {
-
-		var repoList = getRepositories();
-
-		var buildingRequest = new DefaultProjectBuildingRequest(session.getProjectBuildingRequest());
-
-		var settings = session.getSettings();
-		repositorySystem.injectMirror(repoList, settings.getMirrors());
-		repositorySystem.injectProxy(repoList, settings.getProxies());
-		repositorySystem.injectAuthentication(repoList, settings.getServers());
-
-		buildingRequest.setRemoteRepositories(repoList);
-
-		var log = getLog();
-		if (transitive) {
-			log.debug("Resolving " + coordinate + " with transitive dependencies");
-			for (ArtifactResult result : dependencyResolver.resolveDependencies(buildingRequest, coordinate, null)) {
-
-				if ("provided".equals(result.getArtifact().getScope()) && !provided) {
-					log.debug("Skipping provided dependency " + coordinate);
-					continue;
-				}
-
-				/*
-				 * If the coordinate is for an extension zip, then we only we transitive
-				 * dependencies that also have an extension zip
-				 */
-				if (EXTENSION_ARCHIVE.equals(coordinate.getClassifier())) {
-					if (isProcessedGroup(result.getArtifact())) {
-						log.debug("Resolving " + toCoords(result.getArtifact()) + " with transitive dependencies");
-						try {
-							handleResult(artifactResolver.resolveArtifact(buildingRequest,
-									toExtensionCoordinate(result.getArtifact())));
-						} catch (ArtifactResolverException arfe) {
-							log.debug("Failed to resolve " + result.getArtifact().getArtifactId()
-									+ " as an extension, assuming it isn't one");
-						}
-					}
-				} else {
-					handleResult(result);
-				}
-			}
-		} else {
-			log.debug("Resolving " + coordinate);
-			handleResult(artifactResolver.resolveArtifact(buildingRequest, toArtifactCoordinate(coordinate)));
-		}
-
 	}
 
 	protected List<ArtifactRepository> getRepositories() throws MojoFailureException {
@@ -583,11 +500,6 @@ public abstract class AbstractExtensionsMojo extends AbstractBaseExtensionsMojo 
 			getLog().info("   " + artifact + " should be removed, its a transitive dependency");
 			return true;
 		}
-	}
-
-	private String toCoords(Artifact artifact) {
-		return artifact.getArtifactId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion()
-				+ (artifact.getClassifier() == null ? "" : ":" + artifact.getClassifier());
 	}
 
 	protected Path checkDir(Path resolve) {

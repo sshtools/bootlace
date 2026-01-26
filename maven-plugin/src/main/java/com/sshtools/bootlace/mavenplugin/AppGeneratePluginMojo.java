@@ -42,9 +42,6 @@ import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResolverException;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResult;
-import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolverException;
 import org.sonatype.inject.Description;
 
 import com.sshtools.jini.INI.Section;
@@ -55,9 +52,12 @@ import com.sshtools.jini.INI.Section;
 @Mojo(threadSafe = true, name = "generate-app", requiresProject = true, defaultPhase = LifecyclePhase.PACKAGE, requiresDependencyResolution = ResolutionScope.RUNTIME, requiresDependencyCollection = ResolutionScope.RUNTIME)
 @Description("Generates the layers.ini resource")
 public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
-	
+
 	@Parameter
 	private Map<String, String> paths = new HashMap<>();
+
+	@Parameter
+	private Map<String, String> packagedClassifiers = new HashMap<>();
 
 	@Component
 	private MavenProjectHelper projectHelper;
@@ -66,34 +66,32 @@ public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 
 	protected void onExecute() throws MojoExecutionException, MojoFailureException {
 		var log = getLog();
-		
-		normalizedPaths.put("DEFAULT", project.getBuild().getDirectory() + File.separator+ "extensions");
-		normalizedPaths.put("GROUP", project.getBuild().getDirectory()  + File.separator+  "extensions");
-		normalizedPaths.put("BOOT", project.getBuild().getDirectory()  + File.separator+  "boot");
-			
-		paths.forEach((k,v) -> normalizedPaths.put(k.toUpperCase(), v)); 
+
+		normalizedPaths.put("DEFAULT", project.getBuild().getDirectory() + File.separator + "extensions");
+		normalizedPaths.put("GROUP", project.getBuild().getDirectory() + File.separator + "extensions");
+		normalizedPaths.put("BOOT", project.getBuild().getDirectory() + File.separator + "boot");
+
+		paths.forEach((k, v) -> normalizedPaths.put(k.toUpperCase(), v));
 //		
 //		var file = new File(project.getBasedir(), location);
 //		
 		try {
 			var rootProject = this.project;
-			while(true) {
+			while (true) {
 				var p = rootProject.getParent();
-				if(p == null || !p.getFile().isFile())
+				if (p == null || !p.getFile().isFile())
 					break;
 				else
 					rootProject = p;
 			}
-			
-			if(rootProject == null) {
+
+			if (rootProject == null) {
 				log.warn("Cannot generate app, cannot determine root project.");
-			}
-			else {
+			} else {
 				log.info("Root project is " + rootProject.getFile());
 				linkOrCopyExtensions(rootProject);
 			}
-		}
-		catch(IOException ioe) {
+		} catch (IOException ioe) {
 			throw new MojoExecutionException("Failed to update layers.ini.", ioe);
 		}
 	}
@@ -101,64 +99,64 @@ public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 	private void linkOrCopyExtensions(MavenProject project) throws IOException {
 		var log = getLog();
 		var out = new File(project.getBuild().getOutputDirectory());
-		if(!isExclude(project.getArtifact()) && isExtension(out)) {
+		if (!isExclude(project.getArtifact()) && isExtension(out)) {
 			var lyrs = getLayers(out);
 			var cmp = lyrs.obtainSection("component");
 			var artifacts = lyrs.obtainSection("artifacts");
 			var id = cmp.get("id");
 			var type = cmp.get("type", "DEFAULT").toUpperCase();
-			
-			var dir = normalizedPaths.getOrDefault(type, 
-				this.project.getProperties().getProperty("project.build.directory") + File.separator + type.toLowerCase()
-			);
+
+			var dir = normalizedPaths.getOrDefault(type,
+					this.project.getProperties().getProperty("project.build.directory") + File.separator
+							+ type.toLowerCase());
 			log.info("Adding " + id + " of type " + type + " to " + dir);
-			if(layerHasId(type)) {
-				doLink(project, log, out, artifacts, Paths.get(dir).resolve(id));	
-			}
-			else {
+			if (layerHasId(type)) {
+				doLink(project, log, out, artifacts, Paths.get(dir).resolve(id));
+			} else {
 				log.info("Skipping project of layer type " + type);
 			}
 		}
-		for(var module : project.getCollectedProjects()) {
+		for (var module : project.getCollectedProjects()) {
 			linkOrCopyExtensions(module);
 		}
 	}
-	
+
 	private boolean layerHasId(String type) {
 		return type.equalsIgnoreCase("DEFAULT") || type.equalsIgnoreCase("BOOT") || type.equalsIgnoreCase("GROUP");
 	}
 
-	protected void doLink(MavenProject project, Log log, File out, Section artifacts, Path dir)
-			throws IOException {
+	protected void doLink(MavenProject project, Log log, File out, Section artifacts, Path dir) throws IOException {
 		/* Link to the modules classes directory */
-		if(Files.exists(dir))
+		if (Files.exists(dir))
 			recursiveDelete(dir);
 		Files.createDirectories(dir);
 		Files.createSymbolicLink(dir.resolve("classes"), out.toPath());
-		
-		/* And link to all the modules dependencies (those that would otherwise be 
-		 * included in the .zip 
+
+		/*
+		 * And link to all the modules dependencies (those that would otherwise be
+		 * included in the .zip
 		 */
 		var allArtifacts = getFilteredDependencies(project);
 		var extensionsArtifacts = getExtensions(allArtifacts);
-		
-		for(var art : allArtifacts) {
-			if(isBootlaceProvided(art.getFile())) {
-				log.info("Skipping bootlace provided "  + art.getFile());
+
+		for (var art : allArtifacts) {
+			if (isBootlaceProvided(art.getFile())) {
+				log.info("Skipping bootlace provided " + art.getFile());
 				continue;
-			} 
-			
+			}
+
 			if (isExclude(art)) {
 				log.info("Artifact " + art.getFile() + " is excluded");
 				continue;
 			}
-			
+
 			if (!isInArtifactSection(artifacts, art)) {
-				log.info("Artifact " + art.getFile() + " is excluded because it is not in the layer.ini as an [artifact]");
+				log.info("Artifact " + art.getFile()
+						+ " is excluded because it is not in the layer.ini as an [artifact]");
 				continue;
 			}
-			
-			if(!isExtension(art.getFile()) && !isTransientDependencyOfExtension(art, extensionsArtifacts)) {
+
+			if (!isExtension(art.getFile()) && !isTransientDependencyOfExtension(art, extensionsArtifacts)) {
 
 				Files.createSymbolicLink(dir.resolve(makeFilename(art)), art.getFile().toPath());
 			}
@@ -166,26 +164,20 @@ public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 	}
 
 	private boolean isInArtifactSection(Section artifacts, Artifact artifact) {
-		for(var key : artifacts.keys()) {
+		for (var key : artifacts.keys()) {
 			var arr = key.split(":");
 			getLog().debug("Comparing " + artifact + " to " + String.join(", ", arr));
-			if( arr.length > 1 &&
-				( arr[0].equals("") || arr[0].equals(artifact.getGroupId() ) ) &&
-				( arr[1].equals("") || arr[1].equals(artifact.getArtifactId() ) ) &&
-				( arr.length < 3 || ( arr.length > 2 && ( arr[2].equals("") || arr[2].equals(artifact.getVersion() ) ) ) ) &&
-				( arr.length < 4 || ( arr.length > 3 && ( arr[3].equals("") || arr[3].equals(artifact.getClassifier() ) ) ) )
-			) {
+			if (arr.length > 1 && (arr[0].equals("") || arr[0].equals(artifact.getGroupId()))
+					&& (arr[1].equals("") || arr[1].equals(artifact.getArtifactId()))
+					&& (arr.length < 3
+							|| (arr.length > 2 && (arr[2].equals("") || arr[2].equals(artifact.getVersion()))))
+					&& (arr.length < 4
+							|| (arr.length > 3 && (arr[3].equals("") || arr[3].equals(artifact.getClassifier()))))) {
 				getLog().debug("   Match!");
 				return true;
 			}
 		}
 		return false;
-	}
-
-	@Override
-	protected void doHandleResult(ArtifactResult result)
-			throws MojoExecutionException, DependencyResolverException, ArtifactResolverException, IOException {
-		/* Only used for extra artifacts */
 	}
 
 	public static void recursiveDelete(Path fileOrDirectory, FileVisitOption... options) {
@@ -197,8 +189,7 @@ public class AppGeneratePluginMojo extends AbstractExtensionsMojo {
 					throw new UncheckedIOException(e);
 				}
 			});
-		} 
-		catch(IOException ioe) {
+		} catch (IOException ioe) {
 			throw new UncheckedIOException(ioe);
 		}
 	}

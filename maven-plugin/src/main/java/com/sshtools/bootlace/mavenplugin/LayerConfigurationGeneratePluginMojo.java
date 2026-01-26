@@ -33,9 +33,6 @@ import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
 import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProjectHelper;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResolverException;
-import org.apache.maven.shared.transfer.artifact.resolve.ArtifactResult;
-import org.apache.maven.shared.transfer.dependencies.resolve.DependencyResolverException;
 import org.sonatype.inject.Description;
 
 import com.sshtools.jini.INI;
@@ -225,11 +222,5 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 		catch(IOException | INIParseException ioe) {
 			throw new MojoExecutionException("Failed to update layers.ini.", ioe);
 		}
-	}
-
-	@Override
-	protected void doHandleResult(ArtifactResult result)
-			throws MojoExecutionException, DependencyResolverException, ArtifactResolverException, IOException {
-		/* Only used for extra artifacts */
 	}
 }

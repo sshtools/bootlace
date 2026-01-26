@@ -112,12 +112,21 @@ public final class ExtensionLayerImpl extends AbstractStaticLayer implements Ext
 				
 				var watchService = FileSystems.getDefault().newWatchService();
 				
-				directory.register(
+				
+				writeDirectory.register(
 					watchService, 
 					StandardWatchEventKinds.ENTRY_CREATE,
 					StandardWatchEventKinds.ENTRY_DELETE, 
 					StandardWatchEventKinds.ENTRY_MODIFY
 				);
+				if(!isSingleDir()) {
+					readDirectory.register(
+						watchService, 
+						StandardWatchEventKinds.ENTRY_CREATE,
+						StandardWatchEventKinds.ENTRY_DELETE, 
+						StandardWatchEventKinds.ENTRY_MODIFY
+					);
+				}
 
 				watchThread = new Thread(() -> {
 					try {
@@ -156,7 +165,7 @@ public final class ExtensionLayerImpl extends AbstractStaticLayer implements Ext
 	private void checkForDeletedLayers() throws IOException {
 		extensions.values().stream().forEach(lyr -> {
 			var id = lyr.id();
-			var dir = directory.resolve(id);
+			var dir = writeDirectory.resolve(id);
 			if (!Files.exists(dir)) {
 				LOG.info("Removing layer {0}", id);
 				closeLayer(lyr);

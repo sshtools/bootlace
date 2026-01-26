@@ -20,7 +20,6 @@
  */
 package com.sshtools.bootlace.api;
 
-import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Optional;
 
@@ -43,13 +42,6 @@ import java.util.Optional;
  * 
  */
 public interface ExtensionLayer extends ChildLayer {
-
-	/**
-	 * The path that contains the artifacts for the child layers in this layer.
-	 * 
-	 * @return path of layer extensions
-	 */
-	Path path();
 
 	/**
 	 * Get the child extension layers.

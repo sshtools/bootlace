@@ -67,7 +67,7 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 
 	public abstract static class AbstractStaticLayerBuilder<BLDR extends AbstractStaticLayerBuilder<BLDR>> extends AbstractChildLayerBuilder<BLDR> {
 		private Optional<Path> directory = Optional.empty();
-		private Optional<Path> fallbackDirectory = Optional.of(Paths.get(".bootlace"));
+		private Optional<Path> userDirectory = Optional.empty();
 		private Set<String> allowParents = new HashSet<>();
 		private Set<String> denyParents = new HashSet<>();
 
@@ -80,6 +80,7 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 		protected BLDR fromComponentSection(INI.Section section) {
 			super.fromComponentSection(section);
 			withDirectory(section.getOr("directory").map(Paths::get));
+			withUserDirectory(section.getOr("user-directory").map(Paths::get));
 			withAllowParents(section.getAllOr("allowParent").orElse(new String[0]));
 			withAllowParents(section.getAllOr("allowParents").orElse(new String[0]));
 			withAllowParents(section.getAllOr("denyParent").orElse(new String[0]));
@@ -121,36 +122,73 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 			return withDirectory(Optional.of(directory));
 		}
 
-		public BLDR withFallbackDirectory(Path fallbackDirectory) {
-			return withFallbackDirectory(Optional.of(fallbackDirectory));
+		public BLDR withUserDirectory(Path fallbackDirectory) {
+			return withUserDirectory(Optional.of(fallbackDirectory));
 		}
 
 		@SuppressWarnings("unchecked")
-		public BLDR withFallbackDirectory(Optional<Path> fallbackDirectory) {
-			this.fallbackDirectory = fallbackDirectory;
+		public BLDR withUserDirectory(Optional<Path> fallbackDirectory) {
+			this.userDirectory = fallbackDirectory;
 			return (BLDR) this;
 		}
 	}
 
 	private final Set<String> allowParents;
 	private final Set<String> denyParents;
-	private final Optional<Path> fallbackDirectory;
+	
+	protected final Path writeDirectory;
+	protected final Path readDirectory;
 
-	protected final Path directory;
 	protected final Map<String, AbstractChildLayer> extensions = new ConcurrentHashMap<>();
 
 	protected AbstractStaticLayer(AbstractStaticLayerBuilder<?> builder) {
 		super(builder);
-		fallbackDirectory = builder.fallbackDirectory;
 		allowParents = Collections.unmodifiableSet(new HashSet<>(builder.allowParents));
 		denyParents = Collections.unmodifiableSet(new HashSet<>(builder.denyParents));
 
+		var homeBase = Paths.get(System.getProperty("user.home")).resolve(".bootlace");
+		var actualDir = builder.directory.orElseGet(() -> {
+			return homeBase.resolve(id());
+		});
+		
+		if(isWritable(actualDir)) {
+			writeDirectory = readDirectory = actualDir;
+		}
+		else {
+			writeDirectory = builder.userDirectory.orElseGet(() -> homeBase.resolve(id()));
+			readDirectory = actualDir;
+		}
+		
 		try {
-			directory = resolveDirectory(builder);
+			Files.createDirectories(writeDirectory);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}
-
+		
+		LOG.info("Extension archives for {0} read from {1}", id(), readDirectory);
+		LOG.info("Expanded Extension for {0} directories read from {1}", id(), writeDirectory);
+		
+//		try {
+//			writeDirectory = resolveWriteDirectory(builder);
+//		} catch (IOException e) {
+//			throw new UncheckedIOException(e);
+//		}
+//		if(writeDirectory.equals(builder.userDirectory.orElse(null))) {
+//			readDirectory = Optional.empty();
+//		}
+//		else {
+//			readDirectory = builder.userDirectory;
+//		}
+//		if (builder.userDirectory.isPresent()) {
+//			var fallback = builder.userDirectory.get();
+//			if (!fallback.isAbsolute()) {
+//				fallback = Paths.get(System.getProperty("user.home")).resolve(".bootlace").resolve(directory.getFileName());
+//			}
+//			LOG.info("No access to {0}, falling back to {1} for dynamic layers", directory, fallback);
+//			Files.createDirectories(fallback);
+//			return fallback;
+//		} else
+//			throw ade;
 	}
 	
 	@Override
@@ -158,14 +196,7 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 		return extensions.values();
 	}
 
-	@Override
-	public final Path path() {
-		return directory;
-	}
-
-	protected final Path resolveDirectory(AbstractStaticLayerBuilder<?> builder) throws IOException {
-		var directory = builder.directory.orElseGet(() -> defaultDirectory());
-
+	protected final boolean isWritable(Path directory) {
 		try {
 			if (Files.exists(directory)) {
 				var flag = directory.resolve(".bootlace.flag");
@@ -177,20 +208,12 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 			} else {
 				Files.createDirectories(directory);
 			}
+			return true;
 		} catch (AccessDeniedException ade) {
-			if (fallbackDirectory.isPresent()) {
-				var fallback = fallbackDirectory.get();
-				if (!fallback.isAbsolute()) {
-					fallback = Paths.get(System.getProperty("user.home")).resolve(".bootlace").resolve(directory.getFileName());
-				}
-				LOG.info("No access to {0}, falling back to {1} for dynamic layers", directory, fallback);
-				Files.createDirectories(fallback);
-				return fallback;
-			} else
-				throw ade;
+			return false;
+		} catch(IOException ioe) {
+			throw new UncheckedIOException(ioe);
 		}
-		
-		return directory;
 	}
 
 	@Override
@@ -210,19 +233,32 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 	@Override
 	public String toString() {
 		return "AbstractStaticLayer [id()=" + id() + ", name()=" + name() + ", parents()=" + parents() + ", appRepositories()=" + appRepositories() + ", localRepositories()=" + localRepositories()
-				+ ", remoteRepositories()=" + remoteRepositories() + ", monitor()=" + monitor() + ", directory="
-				+ directory + ", allowParents=" + allowParents + ", denyParents=" + denyParents + "]";
+				+ ", remoteRepositories()=" + remoteRepositories() + ", monitor()=" + monitor() + ", " +
+				"allowParents=" + allowParents + ", denyParents=" + denyParents + "]";
 	}
 
-	protected final void checkForArchives() throws IOException {
-		try (var stream = Files.newDirectoryStream(directory,
+	protected final void checkForArchives(Path readDirectory, Path writeDirectory) throws IOException {
+		if(!Files.exists(readDirectory)) {
+			LOG.info("{0} does not exist, skipping checking for extension archives (it may be populated later)", readDirectory);
+			return;
+		}
+		
+		var readIsWritable = isWritable(readDirectory);
+		var writeIsWritable = isSingleDir() ? readIsWritable : isWritable(writeDirectory);
+		
+		if(!writeIsWritable) {
+			LOG.info("{0} is not writable, skipping checking for extension archives.", writeDirectory);
+			return;
+		}
+		
+		try (var stream = Files.newDirectoryStream(readDirectory,
 				p -> p.getFileName().toString().toLowerCase().endsWith(".zip"))) {
 			for (var zip : stream) {
 				try {
 					var descriptor = new Descriptor.Builder().fromArtifact(zip).build();
 					var layer = descriptor.component();
 					var id = layer.get("id");
-					var dir = zip.getParent().resolve(id);
+					var dir = writeDirectory.resolve(id);
 
 					var backupDir = dir.getParent().resolve(dir.getFileName() + ".backup");
 
@@ -236,20 +272,30 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 
 						Files.createDirectories(dir);
 						Zip.unzip(zip, dir);
-						Files.delete(zip);
+						
+						if(readIsWritable) {
+							Files.delete(zip);
+						}
 
 					} catch (IOException ioe) {
 						try {
 
-							var failedFile = zip.getParent().resolve(zip.getFileName() + ".failed");
-							if (Files.exists(failedFile)) {
-								Files.delete(failedFile);
-							}
-							Files.move(zip, failedFile);
+							try {
+								if(readIsWritable) {
+									var failedFile = zip.getParent().resolve(zip.getFileName() + ".failed");
+									if (Files.exists(failedFile)) {
+										Files.delete(failedFile);
+									}
+									Files.move(zip, failedFile);
+								}
 
-							recursiveDelete(dir);
-							if (Files.exists(backupDir)) {
-								Files.move(backupDir, dir);
+								recursiveDelete(dir);
+								if (Files.exists(backupDir)) {
+									Files.move(backupDir, dir);
+								}
+							}
+							catch(AccessDeniedException ade) {
+								LOG.debug("Failed to move .zip file to .zip.failed, or delete existing expanded extension.", ade);
 							}
 							throw ioe;
 						} catch (IOException ioe2) {
@@ -271,9 +317,16 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 	}
 
 	protected final void refresh() throws IOException {
-		checkForArchives();
-		checkForLoadableLayers();
+		if(!isSingleDir()) {
+			checkForArchives(writeDirectory, writeDirectory);
+		}
+		checkForArchives(readDirectory, writeDirectory);
+		checkForLoadableLayers(readDirectory);
 		onRefresh();
+	}
+
+	protected boolean isSingleDir() {
+		return readDirectory.toString().equals(writeDirectory.toString());
 	}
 
 	protected void onRefresh() throws IOException {
@@ -361,7 +414,7 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 		
 	} 
 
-	protected final void checkForLoadableLayers() throws IOException {
+	protected final void checkForLoadableLayers(Path directory) throws IOException {
 		
 		var l = new ArrayList<DescriptorDir>();
 		try (var stream = Files.newDirectoryStream(directory,
@@ -406,6 +459,9 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 				topologicallySorted.add(a);
 			}
 		});
+		
+		LOG.debug("Final order ..");
+		topologicallySorted.forEach(lyr -> LOG.debug("   {0}", lyr.name()));
 
 		topologicallySorted.forEach(lyr -> maybeLoadLayer(lyr.dir, lyr.descriptor));
 	}
@@ -465,7 +521,7 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 				extensions.put(id, layer);
 				layer.rootLayer(rootLayer);
 				rootLayer.addLayer(id, layer);
-				rootLayer.open(layer, directory);
+				rootLayer.open(layer, writeDirectory);
 				rootLayer.afterOpen(layer);
 			}
 			catch(Exception e) {

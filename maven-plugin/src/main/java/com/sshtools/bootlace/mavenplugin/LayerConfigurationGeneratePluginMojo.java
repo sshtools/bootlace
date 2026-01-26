@@ -203,6 +203,11 @@ public class LayerConfigurationGeneratePluginMojo extends AbstractExtensionsMojo
 			}
 			
 			var meta = ini.obtainSection("meta");
+
+			if(!meta.contains("version") || (!meta.get("version").equals(project.getVersion()))) {
+				meta.put("version", project.getVersion());
+				changed = true;
+			}
 			if(!meta.contains("description") || alwaysWritePOMValues) {
 				meta.put("description", project.getDescription() == null ? sec.get("name") : project.getDescription());
 				changed = true;

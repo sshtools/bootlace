@@ -25,6 +25,7 @@ import static com.sshtools.bootlace.api.FilesAndFolders.recursiveDelete;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -202,6 +203,8 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 				var flag = directory.resolve(".bootlace.flag");
 				try {
 					Files.createFile(flag);
+				} catch(FileAlreadyExistsException fae) {
+					return Files.isWritable(flag);
 				} finally {
 					Files.deleteIfExists(flag);
 				}

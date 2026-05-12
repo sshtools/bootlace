@@ -511,7 +511,10 @@ public final class RootLayerImpl extends AbstractLayer implements RootLayer {
 	}
 
 	void close(ChildLayer layer) {
-		LayerContextImpl.deregister(layer.id(), moduleLayers.remove(layer.id()));
+		ModuleLayer mlyr = moduleLayers.remove(layer.id());
+		if(mlyr != null) {
+			LayerContextImpl.deregister(layer.id(), mlyr);
+		}
 		moduleLoaders.remove(layer.id());
 	}
 

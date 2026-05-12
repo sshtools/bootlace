@@ -52,6 +52,7 @@ import com.sshtools.bootlace.api.Exceptions.NotALayer;
 import com.sshtools.bootlace.api.ExtensionLayer;
 import com.sshtools.bootlace.api.Layer;
 import com.sshtools.bootlace.api.LayerType;
+import com.sshtools.bootlace.api.LocalLayer;
 import com.sshtools.bootlace.api.Logs;
 import com.sshtools.bootlace.api.Logs.BootLog;
 import com.sshtools.bootlace.api.Logs.Log;
@@ -63,7 +64,7 @@ import com.sshtools.bootlace.platform.jini.INI;
  * A Container layer that obtains its artifacts from a directory of jars
  * or classes.
  */
-public abstract class AbstractStaticLayer extends AbstractChildLayer implements ExtensionLayer {
+public abstract class AbstractStaticLayer extends AbstractChildLayer implements ExtensionLayer, LocalLayer {
 	private final static Log LOG = Logs.of(BootLog.LAYERS);
 
 	public abstract static class AbstractStaticLayerBuilder<BLDR extends AbstractStaticLayerBuilder<BLDR>> extends AbstractChildLayerBuilder<BLDR> {
@@ -190,6 +191,21 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 //			return fallback;
 //		} else
 //			throw ade;
+	}
+	
+	@Override
+	public Path directory() {
+		return writeDirectory();
+	}
+
+	@Override
+	public Path readDirectory() {
+		return readDirectory;
+	}
+
+	@Override
+	public Path writeDirectory() {
+		return writeDirectory;
 	}
 	
 	@Override
@@ -328,7 +344,7 @@ public abstract class AbstractStaticLayer extends AbstractChildLayer implements 
 		onRefresh();
 	}
 
-	protected boolean isSingleDir() {
+	public boolean isSingleDir() {
 		return readDirectory.toString().equals(writeDirectory.toString());
 	}
 
